@@ -40,7 +40,9 @@ class PrayerRepository(
 ) {
     private val zone: ZoneId get() = ZoneId.systemDefault()
 
-    suspend fun activePlace(s: AppSettings = settingsRepo.current()): ActivePlace {
+    suspend fun activePlace(): ActivePlace = activePlace(settingsRepo.current())
+
+    fun activePlace(s: AppSettings): ActivePlace {
         val london = Places.mosqueById("london-central-mosque")!!
         return when (s.mode) {
             LocationMode.MOSQUE -> {
