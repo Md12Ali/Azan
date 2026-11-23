@@ -17,6 +17,7 @@ import com.md12ali.sakinah.ui.MainActivity
 object Notifications {
     const val CH_ADHAN = "adhan_playback"   // silent channel – the service itself plays the Adhan
     const val CH_GENTLE = "prayer_gentle"   // default soft notification sound
+    const val CH_FALLBACK = "adhan_fallback" // loud alarm-sound notification if the player can't start
 
     fun createChannels(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java)
@@ -24,6 +25,14 @@ object Notifications {
             description = "Shown while the Adhan is playing"
             setSound(null, null)
             enableVibration(false)
+        })
+        nm.createNotificationChannel(NotificationChannel(CH_FALLBACK, "Prayer alarm", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Used if the Adhan player can't start"
+            setSound(
+                android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM),
+                android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_ALARM).build()
+            )
+            enableVibration(true)
         })
         nm.createNotificationChannel(NotificationChannel(CH_GENTLE, "Gentle prayer reminders", NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = "Soft notification at prayer time (no Adhan)"
@@ -36,10 +45,14 @@ object Notifications {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-    fun showGentle(context: Context, prayer: Prayer, time: String, place: String) {
+    fun showGentle(context: Context, prayer: Prayer, time: String, place: String) = show(context, CH_GENTLE, prayer, time, place)
+
+    fun showFallbackAlarm(context: Context, prayer: Prayer, time: String, place: String) = show(context, CH_FALLBACK, prayer, time, place)
+
+    private fun show(context: Context, channel: String, prayer: Prayer, time: String, place: String) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
             android.os.Build.VERSION.SDK_INT >= 33) return
-        val n = NotificationCompat.Builder(context, CH_GENTLE)
+        val n = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("${prayer.english} · ${prayer.arabic}")
             .setContentText(listOf(time, place).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { "It's time for prayer" })

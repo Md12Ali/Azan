@@ -76,7 +76,8 @@ class AdhanPlaybackService : Service() {
 
         val mp = MediaPlayer()
         try {
-            assets.openFd(assetPath).use { afd -> mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length) }
+            if (assetPath.startsWith("/")) mp.setDataSource(assetPath)            // recording chosen from the phone
+            else assets.openFd(assetPath).use { afd -> mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length) }
         } catch (e: Exception) {
             // No Adhan file bundled yet → phone's default alarm sound so the alert still happens.
             val fallback = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
@@ -157,9 +158,26 @@ class AdhanPlaybackService : Service() {
         }
 
         /** Audio files available in assets/adhan (shown in the sound picker). */
-        fun availableSounds(context: Context): List<String> =
-            context.assets.list("adhan").orEmpty()
-                .filter { it.endsWith(".mp3") || it.endsWith(".ogg") || it.endsWith(".m4a") }
-                .map { "adhan/$it" }
+        fun availableSounds(context: Context): List<String> {
+            val ok = { n: String -> n.endsWith(".mp3") || n.endsWith(".ogg") || n.endsWith(".m4a") || n.endsWith(".wav") }
+            val bundled = context.assets.list("adhan").orEmpty().filter(ok).map { "adhan/$it" }
+            val chosen = userSoundsDir(context).listFiles().orEmpty().filter { ok(it.name.lowercase()) }.map { it.absolutePath }
+            return chosen + bundled
+        }
+
+        fun userSoundsDir(context: Context) = java.io.File(context.filesDir, "adhan").apply { mkdirs() }
+
+        /** Copies an audio file the user picked (Files / Downloads / WhatsApp…) into app storage so alarms can always read it. */
+        fun importSound(context: Context, uri: android.net.Uri): String? = runCatching {
+            var name = "adhan_${System.currentTimeMillis()}.mp3"
+            context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+                val i = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (i >= 0 && c.moveToFirst()) c.getString(i)?.let { n -> name = n.replace(Regex("[^A-Za-z0-9._ -]"), "_") }
+            }
+            if (!name.contains('.')) name += ".mp3"
+            val out = java.io.File(userSoundsDir(context), name)
+            context.contentResolver.openInputStream(uri)!!.use { input -> out.outputStream().use { input.copyTo(it) } }
+            out.absolutePath
+        }.getOrNull()
     }
 }

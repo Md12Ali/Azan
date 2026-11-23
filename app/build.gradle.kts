@@ -17,6 +17,17 @@ android {
         versionName = "1.0.0"
     }
 
+    // Fixed debug key (committed on purpose) so every GitHub build can be installed over the last one.
+    // For Google Play, create a private release key and keep it out of the repo.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true

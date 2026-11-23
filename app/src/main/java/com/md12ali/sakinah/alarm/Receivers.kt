@@ -33,7 +33,13 @@ class AdhanAlarmReceiver : BroadcastReceiver() {
                             .putExtra(AdhanScheduler.EXTRA_PRAYER, prayer.name)
                             .putExtra(AdhanScheduler.EXTRA_TIME, time)
                             .putExtra(AdhanScheduler.EXTRA_PLACE, place)
-                        ContextCompat.startForegroundService(context, svc)
+                        try {
+                            ContextCompat.startForegroundService(context, svc)
+                        } catch (e: Exception) {
+                            // e.g. ForegroundServiceStartNotAllowedException – never stay silent: ring the alarm notification.
+                            android.util.Log.e("Adhan", "Could not start Adhan player", e)
+                            Notifications.showFallbackAlarm(context, prayer, time, place)
+                        }
                     }
                     AlertMode.GENTLE -> Notifications.showGentle(context, prayer, time, place)
                     AlertMode.SILENT -> Unit

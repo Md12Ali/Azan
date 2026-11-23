@@ -60,6 +60,22 @@ object AdhanScheduler {
         }
     }
 
+    /** Schedules a real Adhan alarm [seconds] from now – lets the user check sound, lock screen and battery settings. */
+    fun scheduleTest(context: Context, seconds: Long = 60) {
+        val am = context.getSystemService(AlarmManager::class.java)
+        val at = System.currentTimeMillis() + seconds * 1000
+        val time = java.time.LocalTime.now().plusSeconds(seconds).withSecond(0).withNano(0)
+        val intent = Intent(context, AdhanAlarmReceiver::class.java).apply {
+            action = "com.md12ali.sakinah.ADHAN_TEST"
+            putExtra(EXTRA_PRAYER, Prayer.DHUHR.name)
+            putExtra(EXTRA_TIME, time.toString())
+            putExtra(EXTRA_PLACE, "Test Adhan")
+        }
+        val pi = PendingIntent.getBroadcast(context, 9999, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        if (canScheduleExact(context)) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+        else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+    }
+
     private fun pendingIntent(context: Context, date: LocalDate, p: Prayer, time: ZonedDateTime?, place: String?): PendingIntent {
         val intent = Intent(context, AdhanAlarmReceiver::class.java).apply {
             action = "com.md12ali.sakinah.ADHAN_${date}_${p.name}"   // unique action → unique PendingIntent

@@ -3,6 +3,8 @@ package com.md12ali.sakinah.ui.settings
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -21,10 +23,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material.icons.outlined.BatteryChargingFull
 import androidx.compose.material.icons.outlined.Calculate
+import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -37,13 +42,16 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.md12ali.sakinah.alarm.AdhanScheduler
 import com.md12ali.sakinah.audio.AdhanPlaybackService
 import com.md12ali.sakinah.core.prayer.CalculationMethod
 import com.md12ali.sakinah.core.prayer.Madhab
@@ -60,7 +68,17 @@ import com.md12ali.sakinah.ui.theme.arabicStyle
 fun AdhanSettingsScreen(vm: PrayerViewModel) {
     val s by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val sounds = remember { AdhanPlaybackService.availableSounds(context) }
+    var sounds by remember { mutableStateOf(AdhanPlaybackService.availableSounds(context)) }
+    var pickFor by remember { mutableStateOf<String?>(null) }   // "fajr" | "main"
+    var testScheduled by remember { mutableStateOf(false) }
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            AdhanPlaybackService.importSound(context, uri)?.let { path ->
+                if (pickFor == "fajr") vm.setFajrSound(path) else vm.setMainSound(path)
+                sounds = AdhanPlaybackService.availableSounds(context)
+            }
+        }
+    }
     val cs = MaterialTheme.colorScheme
 
     Column(
@@ -70,6 +88,19 @@ fun AdhanSettingsScreen(vm: PrayerViewModel) {
     ) {
         Text("Adhan", style = MaterialTheme.typography.headlineMedium)
         Text("Choose how each prayer is announced", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
+
+        SoftCard(selected = true) {
+            CardTitle(Icons.Outlined.NotificationsActive, "Test the Adhan")
+            Text(
+                if (testScheduled) "Test Adhan set for 1 minute from now – lock your phone and wait."
+                else "Plays a real Adhan alarm in 1 minute so you can check it works with the screen locked.",
+                style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
+            )
+            Spacer(Modifier.padding(4.dp))
+            Button(onClick = { AdhanScheduler.scheduleTest(context); testScheduled = true }, shape = RoundedCornerShape(50)) {
+                Text("Test Adhan in 1 minute")
+            }
+        }
 
         SoftCard {
             CardTitle(Icons.Outlined.Alarm, "Alert for each prayer")
@@ -96,11 +127,17 @@ fun AdhanSettingsScreen(vm: PrayerViewModel) {
 
         SoftCard {
             CardTitle(Icons.Outlined.MusicNote, "Adhan sound")
-            if (sounds.isEmpty()) Text("No Adhan recordings added yet – your phone's alarm tone is used for now.",
+            if (sounds.isEmpty()) Text("No Adhan recording chosen yet – your phone's alarm tone plays instead. Tap 'Choose from phone' and pick an Adhan MP3 (from Downloads, WhatsApp, etc.).",
                 style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
             SoundPicker("Fajr (calm)", s.settings.fajrSound, sounds, vm::setFajrSound) { AdhanPlaybackService.preview(context, Prayer.FAJR, it) }
+            FilledTonalButton(onClick = { pickFor = "fajr"; picker.launch(arrayOf("audio/*")) }, shape = RoundedCornerShape(50)) {
+                Icon(Icons.Outlined.LibraryMusic, null); Spacer(Modifier.width(6.dp)); Text("Choose Fajr Adhan from phone")
+            }
             HorizontalDivider(Modifier.padding(vertical = 8.dp), color = cs.outlineVariant)
             SoundPicker("Dhuhr · Asr · Maghrib · Isha", s.settings.mainSound, sounds, vm::setMainSound) { AdhanPlaybackService.preview(context, Prayer.DHUHR, it) }
+            FilledTonalButton(onClick = { pickFor = "main"; picker.launch(arrayOf("audio/*")) }, shape = RoundedCornerShape(50)) {
+                Icon(Icons.Outlined.LibraryMusic, null); Spacer(Modifier.width(6.dp)); Text("Choose Adhan from phone")
+            }
             Spacer(Modifier.padding(4.dp))
             OutlinedButton(onClick = { AdhanPlaybackService.stop(context) }, shape = RoundedCornerShape(50)) {
                 Icon(Icons.Outlined.Stop, null); Spacer(Modifier.width(6.dp)); Text("Stop preview")
