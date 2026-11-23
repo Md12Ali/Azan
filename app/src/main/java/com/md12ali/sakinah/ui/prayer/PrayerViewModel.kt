@@ -91,7 +91,14 @@ class PrayerViewModel(app: Application) : AndroidViewModel(app) {
         val s = c.settings.current()
         if (fetchGps && s.mode == LocationMode.AUTO_GPS && c.location.hasPermission()) {
             _state.update { it.copy(busyMessage = "Finding your location…") }
-            c.location.currentLocation()?.let { c.settings.setLastFix(it.latitude, it.longitude) }
+            c.location.currentLocation()?.let { loc ->
+                c.settings.setLastFix(loc.latitude, loc.longitude)
+                reload().join()
+                // Country + town name → right calculation method for wherever you are in the world.
+                runCatching { c.geo.reverse(loc.latitude, loc.longitude) }.getOrNull()?.let { info ->
+                    c.settings.setGpsPlace(info.countryCode, info.locality)
+                }
+            }
             reload().join()
         }
         val mosque = c.prayerRepository.activePlace().mosque
@@ -116,14 +123,40 @@ class PrayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun useAutoGps() = viewModelScope.launch { c.settings.setMode(LocationMode.AUTO_GPS); refresh(fetchGps = true) }
     fun chooseMosque(m: MosqueProfile) = viewModelScope.launch { c.settings.setMosque(m.id); refresh() }
-    fun chooseCity(city: City) = viewModelScope.launch { c.settings.setCity(city.name, city.latitude, city.longitude); refresh() }
+    fun chooseCity(city: City) = viewModelScope.launch {
+        c.settings.setCity(city.name, city.latitude, city.longitude, city.countryCode); refresh()
+    }
+
+    private val _search = MutableStateFlow<List<City>>(emptyList())
+    val searchResults: StateFlow<List<City>> = _search.asStateFlow()
+    private var searchJob: kotlinx.coroutines.Job? = null
+    /** Worldwide place search (debounced). */
+    fun search(q: String) {
+        searchJob?.cancel()
+        if (q.trim().length < 2) { _search.value = emptyList(); return }
+        searchJob = viewModelScope.launch {
+            delay(450)
+            _search.value = c.geo.search(q)
+        }
+    }
+
+    /** Downloads the real Adhan recordings now (also happens automatically in the background). */
+    fun downloadAdhan() = viewModelScope.launch {
+        _state.update { it.copy(busyMessage = "Downloading Adhan recordings…") }
+        val n = com.md12ali.sakinah.audio.AdhanAudio.ensureDownloaded(getApplication())
+        _state.update {
+            it.copy(busyMessage = null, message = if (n > 0) "$n Adhan recordings ready – they now play offline."
+            else "Couldn't download the Adhan recordings. Check your internet and try again.")
+        }
+    }
     fun setAlert(p: Prayer, mode: AlertMode) = viewModelScope.launch { c.settings.setAlert(p, mode); reload() }
     fun cycleAlert(p: Prayer) {
         val cur = _state.value.settings.alerts[p] ?: AlertMode.ADHAN
         setAlert(p, AlertMode.entries[(cur.ordinal + 1) % AlertMode.entries.size])
     }
-    fun setMethod(m: CalculationMethod) = viewModelScope.launch { c.settings.setMethod(m); reload() }
-    fun setMadhab(m: Madhab) = viewModelScope.launch { c.settings.setMadhab(m); reload() }
+    /** null = automatic (by country). */
+    fun setMethod(m: CalculationMethod?) = viewModelScope.launch { c.settings.setMethod(m); reload() }
+    fun setMadhab(m: Madhab?) = viewModelScope.launch { c.settings.setMadhab(m); refresh(forceDownload = true) }
     fun setAlertAtJamaat(v: Boolean) = viewModelScope.launch { c.settings.setAlertAtJamaat(v); reload() }
     fun setUseAlarmVolume(v: Boolean) = viewModelScope.launch { c.settings.setUseAlarmVolume(v) }
     fun setFajrSound(p: String) = viewModelScope.launch { c.settings.setFajrSound(p) }

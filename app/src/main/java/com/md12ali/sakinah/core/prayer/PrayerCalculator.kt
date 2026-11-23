@@ -21,12 +21,68 @@ import kotlin.math.tan
  * very short summer nights in Britain with seasonal Fajr/Isha adjustments instead of impossible 18° angles.
  * The [aladhanId] lets the same choice be sent to the AlAdhan API so online and offline results match.
  */
-enum class CalculationMethod(val label: String, val fajrAngle: Double, val ishaAngle: Double, val aladhanId: Int) {
-    MOONSIGHTING_COMMITTEE("Moonsighting Committee (recommended UK)", 18.0, 18.0, 15),
+enum class CalculationMethod(
+    val label: String,
+    val fajrAngle: Double,
+    val ishaAngle: Double,
+    val aladhanId: Int,
+    /** Isha = Maghrib + N minutes (Umm al-Qura, Gulf, Qatar) instead of an angle. */
+    val ishaIntervalMin: Int? = null,
+    /** Fixed minute adjustments the authority publishes (e.g. Diyanet). */
+    val methodOffsets: Offsets = Offsets()
+) {
+    MOONSIGHTING_COMMITTEE("Moonsighting Committee (UK)", 18.0, 18.0, 15),
     MUSLIM_WORLD_LEAGUE("Muslim World League", 18.0, 17.0, 3),
-    KARACHI("University of Islamic Sciences, Karachi", 18.0, 18.0, 1),
+    UMM_AL_QURA("Umm al-Qura, Makkah", 18.5, 0.0, 4, ishaIntervalMin = 90),
+    EGYPT("Egyptian General Authority", 19.5, 17.5, 5),
+    KARACHI("Karachi (Pakistan, India, Bangladesh)", 18.0, 18.0, 1),
     ISNA("ISNA (North America)", 15.0, 15.0, 2),
-    EGYPT("Egyptian General Authority", 19.5, 17.5, 5)
+    GULF("Gulf region", 19.5, 0.0, 8, ishaIntervalMin = 90),
+    KUWAIT("Kuwait", 18.0, 17.5, 9),
+    QATAR("Qatar", 18.0, 0.0, 10, ishaIntervalMin = 90),
+    DUBAI("Dubai (UAE)", 18.2, 18.2, 16),
+    SINGAPORE("Singapore / Malaysia (JAKIM)", 20.0, 18.0, 11),
+    INDONESIA("Indonesia (Kemenag)", 20.0, 18.0, 20),
+    TURKEY("Diyanet, Turkey", 18.0, 17.0, 13, methodOffsets = Offsets(sunrise = -7, dhuhr = 5, asr = 4, maghrib = 7)),
+    FRANCE("UOIF, France", 12.0, 12.0, 12),
+    RUSSIA("Russia", 16.0, 15.0, 14),
+    MOROCCO("Morocco", 19.0, 17.0, 21),
+    TUNISIA("Tunisia", 18.0, 18.0, 18),
+    ALGERIA("Algeria", 18.0, 17.0, 19),
+    JORDAN("Jordan", 18.0, 18.0, 23),
+    IRAN("Tehran (Shia)", 17.7, 14.0, 7);
+
+    companion object {
+        /** The method most mosques use in a country (ISO 3166 alpha-2 code). */
+        fun forCountry(code: String?): CalculationMethod = when (code?.uppercase()) {
+            "GB", "IE" -> MOONSIGHTING_COMMITTEE
+            "SA", "YE" -> UMM_AL_QURA
+            "AE" -> DUBAI
+            "OM", "BH" -> GULF
+            "KW" -> KUWAIT
+            "QA" -> QATAR
+            "EG", "SD", "LY", "SY", "LB", "IQ", "PS" -> EGYPT
+            "PK", "IN", "BD", "AF", "NP", "LK" -> KARACHI
+            "US", "CA", "MX" -> ISNA
+            "MY", "SG", "BN" -> SINGAPORE
+            "ID" -> INDONESIA
+            "TR", "AZ", "XK" -> TURKEY
+            "FR", "BE", "LU" -> FRANCE
+            "RU", "KZ", "UZ", "TJ", "KG", "TM" -> RUSSIA
+            "MA" -> MOROCCO
+            "TN" -> TUNISIA
+            "DZ" -> ALGERIA
+            "JO" -> JORDAN
+            "IR" -> IRAN
+            else -> MUSLIM_WORLD_LEAGUE
+        }
+
+        /** Hanafi Asr is standard in South Asia, Turkey, Central Asia and UK South-Asian communities. */
+        fun defaultMadhabFor(code: String?): Madhab = when (code?.uppercase()) {
+            "PK", "IN", "BD", "AF", "TR", "GB", "UZ", "TJ", "KG", "KZ", "TM", "AZ", "XK", "BA", "AL" -> Madhab.HANAFI
+            else -> Madhab.SHAFI
+        }
+    }
 }
 
 /** Per-prayer offsets in minutes, e.g. to align with a mosque that adds safety minutes. */
@@ -88,11 +144,14 @@ object PrayerCalculator {
                 }
             }
             else -> {
+                params.method.ishaIntervalMin?.let { isha = sunset + it / 60.0 }
                 // "Angle based" high-latitude rule (AlAdhan default): portion of night = angle / 60.
                 val fajrPortion = params.method.fajrAngle / 60.0 * night
                 if (fajr.isNaN() || sunrise - fajr > fajrPortion) fajr = sunrise - fajrPortion
-                val ishaPortion = params.method.ishaAngle / 60.0 * night
-                if (isha.isNaN() || isha - sunset > ishaPortion) isha = sunset + ishaPortion
+                if (params.method.ishaIntervalMin == null) {
+                    val ishaPortion = params.method.ishaAngle / 60.0 * night
+                    if (isha.isNaN() || isha - sunset > ishaPortion) isha = sunset + ishaPortion
+                }
             }
         }
 
@@ -102,8 +161,8 @@ object PrayerCalculator {
         )
         val midnightUtc = date.atStartOfDay(ZoneOffset.UTC)
         val begins = raw.mapValues { (p, hours) ->
-            val seconds = (hours * 3600.0).roundToLong() + params.offsets.of(p) * 60L
-            roundToMinute(midnightUtc.plusSeconds(seconds)).withZoneSameInstant(zone)
+            val seconds = (hours * 3600.0).roundToLong() + (params.offsets.of(p) + params.method.methodOffsets.of(p)) * 60L
+            roundToMinute(midnightUtc.plusSeconds(seconds), up = p == Prayer.ASR).withZoneSameInstant(zone)
         }
         return PrayerDay(
             date = date,
@@ -211,8 +270,10 @@ object PrayerCalculator {
 
     // ----------------------------------------------------------------- helpers
 
-    private fun roundToMinute(t: ZonedDateTime): ZonedDateTime =
-        if (t.second >= 30) t.truncatedTo(ChronoUnit.MINUTES).plusMinutes(1) else t.truncatedTo(ChronoUnit.MINUTES)
+    /** Nearest minute; Asr is rounded up (never announce Asr before it has truly begun – matches AlAdhan). */
+    private fun roundToMinute(t: ZonedDateTime, up: Boolean = false): ZonedDateTime =
+        if ((up && (t.second > 0 || t.nano > 0)) || t.second >= 30) t.truncatedTo(ChronoUnit.MINUTES).plusMinutes(1)
+        else t.truncatedTo(ChronoUnit.MINUTES)
 
     private fun dSin(d: Double) = sin(Math.toRadians(d))
     private fun dCos(d: Double) = cos(Math.toRadians(d))

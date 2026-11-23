@@ -22,6 +22,7 @@ import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.LocationCity
 import androidx.compose.material.icons.outlined.Mosque
 import androidx.compose.material.icons.outlined.MyLocation
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -62,7 +63,10 @@ fun LocationScreen(vm: PrayerViewModel, onDone: () -> Unit) {
     }
     val q = query.trim().lowercase()
     val mosques = Places.mosques.filter { q.isEmpty() || it.name.lowercase().contains(q) || it.city.lowercase().contains(q) }
-    val cities = Places.ukCities.filter { q.isEmpty() || it.name.lowercase().contains(q) }
+    val world by vm.searchResults.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(query) { vm.search(query) }
+    val cities = if (q.isEmpty()) Places.worldCities
+        else Places.worldCities.filter { it.name.lowercase().contains(q) || it.country.orEmpty().lowercase().contains(q) }
     val cs = MaterialTheme.colorScheme
 
     LazyColumn(
@@ -71,8 +75,8 @@ fun LocationScreen(vm: PrayerViewModel, onDone: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Text("Mosque & location", style = MaterialTheme.typography.headlineMedium)
-            Text("Prayer times follow your city's central mosque", style = MaterialTheme.typography.bodyMedium,
+            Text("Location", style = MaterialTheme.typography.headlineMedium)
+            Text("Anywhere in the world – GPS, any city, or a UK central mosque", style = MaterialTheme.typography.bodyMedium,
                 color = cs.onSurfaceVariant)
             Spacer(Modifier.padding(6.dp))
             val auto = s.settings.mode == LocationMode.AUTO_GPS
@@ -83,8 +87,8 @@ fun LocationScreen(vm: PrayerViewModel, onDone: () -> Unit) {
                     IconBadge(Icons.Outlined.MyLocation, cs.onPrimary, cs.primary, 46.dp)
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
-                        Text("Automatic (GPS)", style = MaterialTheme.typography.titleMedium)
-                        Text("Uses the central mosque of whichever UK city you're in – switches by itself when you travel.",
+                        Text("Automatic (GPS) – anywhere in the world", style = MaterialTheme.typography.titleMedium)
+                        Text("Finds your city and country and uses the method local mosques follow. In UK cities it uses the central mosque's own timetable.",
                             style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
                     }
                     if (auto) Icon(Icons.Outlined.CheckCircle, null, tint = cs.primary)
@@ -93,13 +97,27 @@ fun LocationScreen(vm: PrayerViewModel, onDone: () -> Unit) {
             Spacer(Modifier.padding(4.dp))
             OutlinedTextField(
                 query, { query = it }, Modifier.fillMaxWidth(),
-                placeholder = { Text("Search mosque or city") },
+                placeholder = { Text("Search any city or country in the world") },
                 leadingIcon = { Icon(Icons.Outlined.Search, null) },
                 singleLine = true, shape = RoundedCornerShape(20.dp),
                 colors = OutlinedTextFieldDefaults.colors(unfocusedContainerColor = cs.surface, focusedContainerColor = cs.surface)
             )
-            SectionHeader("Central mosques")
+            if (world.isNotEmpty() && q.isNotEmpty()) SectionHeader("Search results")
         }
+        if (q.isNotEmpty()) items(world, key = { "w_" + it.name + it.latitude }) { city ->
+            SoftCard(onClick = { vm.chooseCity(city); onDone() }) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconBadge(Icons.Outlined.Public, cs.primary, cs.primaryContainer, 36.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(city.name, style = MaterialTheme.typography.titleSmall)
+                        Text(com.md12ali.sakinah.core.prayer.CalculationMethod.forCountry(city.countryCode).label,
+                            style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        if (mosques.isNotEmpty()) item { SectionHeader("UK central mosques") }
         items(mosques, key = { it.id }) { m ->
             val selected = s.settings.mode == LocationMode.MOSQUE && s.settings.mosqueId == m.id
             val linked = s.settings.mosqueSources[m.id]
@@ -117,14 +135,17 @@ fun LocationScreen(vm: PrayerViewModel, onDone: () -> Unit) {
                 }
             }
         }
-        item { SectionHeader("City only (calculated times)") }
-        items(cities, key = { "city_" + it.name }) { city ->
+        if (cities.isNotEmpty()) item { SectionHeader("World cities") }
+        items(cities, key = { "city_" + it.name + it.countryCode }) { city ->
             val selected = s.settings.mode == LocationMode.CITY_CALC && s.settings.cityName == city.name
             SoftCard(selected = selected, onClick = { vm.chooseCity(city); onDone() }) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconBadge(Icons.Outlined.LocationCity, cs.tertiary, cs.surfaceVariant, 36.dp)
                     Spacer(Modifier.width(12.dp))
-                    Text(city.name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    Column(Modifier.weight(1f)) {
+                        Text(city.name, style = MaterialTheme.typography.bodyLarge)
+                        Text(city.country.orEmpty(), style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                    }
                     if (selected) Icon(Icons.Outlined.CheckCircle, null, tint = cs.primary)
                 }
             }

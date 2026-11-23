@@ -42,9 +42,17 @@ data class AppSettings(
     val lastFixAt: Long = 0,
     val method: CalculationMethod = CalculationMethod.MOONSIGHTING_COMMITTEE,
     val madhab: Madhab = Madhab.HANAFI,
+    /** Pick the method / Asr school the local mosques use, from the country you're in. */
+    val autoMethod: Boolean = true,
+    val autoMadhab: Boolean = true,
+    /** Country + town of the last GPS fix (reverse geocoded). */
+    val gpsCountryCode: String? = null,
+    val gpsPlaceName: String? = null,
+    val cityCountryCode: String? = null,
     val alerts: Map<Prayer, AlertMode> = defaultAlerts,
-    val fajrSound: String = "adhan/fajr_soft.mp3",
-    val mainSound: String = "adhan/adhan_full.mp3",
+    /** "" = automatic (best available real Adhan recording). Otherwise a file path or asset path. */
+    val fajrSound: String = "",
+    val mainSound: String = "",
     val useAlarmVolume: Boolean = true,
     /** Adhan at the mosque's jamaat time instead of the begin time (only when the mosque publishes jamaat). */
     val alertAtJamaat: Boolean = false,
@@ -52,6 +60,20 @@ data class AppSettings(
     val mosqueSources: Map<String, String> = emptyMap(),
     val onboardingDone: Boolean = false
 ) {
+    /** The country whose conventions apply right now. */
+    val activeCountry: String?
+        get() = when (mode) {
+            LocationMode.CITY_CALC -> cityCountryCode
+            LocationMode.MOSQUE -> "GB"
+            LocationMode.AUTO_GPS -> gpsCountryCode
+        }
+
+    val effectiveMethod: CalculationMethod
+        get() = if (autoMethod) CalculationMethod.forCountry(activeCountry ?: "GB") else method
+
+    val effectiveMadhab: Madhab
+        get() = if (autoMadhab) CalculationMethod.defaultMadhabFor(activeCountry ?: "GB") else madhab
+
     companion object {
         val defaultAlerts = mapOf(
             Prayer.FAJR to AlertMode.SOFT_ADHAN, Prayer.DHUHR to AlertMode.ADHAN, Prayer.ASR to AlertMode.ADHAN,
@@ -79,6 +101,11 @@ class SettingsRepository(private val context: Context) {
         val atJamaat = booleanPreferencesKey("at_jamaat")
         val sources = stringPreferencesKey("mosque_sources")   // "id=src\nid=src"
         val onboarding = booleanPreferencesKey("onboarding_done")
+        val autoMethod = booleanPreferencesKey("auto_method")
+        val autoMadhab = booleanPreferencesKey("auto_madhab")
+        val gpsCountry = stringPreferencesKey("gps_country")
+        val gpsPlace = stringPreferencesKey("gps_place")
+        val cityCountry = stringPreferencesKey("city_country")
         fun alert(p: Prayer) = stringPreferencesKey("alert_${p.name}")
     }
 
@@ -95,6 +122,10 @@ class SettingsRepository(private val context: Context) {
             lastLat = this[K.lastLat], lastLon = this[K.lastLon], lastFixAt = this[K.lastFixAt] ?: 0,
             method = this[K.method]?.let { runCatching { CalculationMethod.valueOf(it) }.getOrNull() } ?: d.method,
             madhab = this[K.madhab]?.let { runCatching { Madhab.valueOf(it) }.getOrNull() } ?: d.madhab,
+            autoMethod = this[K.autoMethod] ?: true,
+            autoMadhab = this[K.autoMadhab] ?: true,
+            gpsCountryCode = this[K.gpsCountry], gpsPlaceName = this[K.gpsPlace],
+            cityCountryCode = this[K.cityCountry],
             alerts = Prayer.adhanPrayers.associateWith { p ->
                 this[K.alert(p)]?.let { runCatching { AlertMode.valueOf(it) }.getOrNull() } ?: d.alerts.getValue(p)
             },
@@ -110,14 +141,23 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setMode(mode: LocationMode) = context.dataStore.edit { it[K.mode] = mode.name }
     suspend fun setMosque(id: String) = context.dataStore.edit { it[K.mosqueId] = id; it[K.mode] = LocationMode.MOSQUE.name }
-    suspend fun setCity(name: String, lat: Double, lon: Double) = context.dataStore.edit {
+    suspend fun setCity(name: String, lat: Double, lon: Double, countryCode: String? = null) = context.dataStore.edit {
         it[K.cityName] = name; it[K.cityLat] = lat; it[K.cityLon] = lon; it[K.mode] = LocationMode.CITY_CALC.name
+        if (countryCode != null) it[K.cityCountry] = countryCode else it.remove(K.cityCountry)
+    }
+    suspend fun setGpsPlace(countryCode: String?, place: String?) = context.dataStore.edit {
+        if (countryCode != null) it[K.gpsCountry] = countryCode
+        if (place != null) it[K.gpsPlace] = place
     }
     suspend fun setLastFix(lat: Double, lon: Double) = context.dataStore.edit {
         it[K.lastLat] = lat; it[K.lastLon] = lon; it[K.lastFixAt] = System.currentTimeMillis()
     }
-    suspend fun setMethod(m: CalculationMethod) = context.dataStore.edit { it[K.method] = m.name }
-    suspend fun setMadhab(m: Madhab) = context.dataStore.edit { it[K.madhab] = m.name }
+    suspend fun setMethod(m: CalculationMethod?) = context.dataStore.edit {
+        if (m == null) it[K.autoMethod] = true else { it[K.method] = m.name; it[K.autoMethod] = false }
+    }
+    suspend fun setMadhab(m: Madhab?) = context.dataStore.edit {
+        if (m == null) it[K.autoMadhab] = true else { it[K.madhab] = m.name; it[K.autoMadhab] = false }
+    }
     suspend fun setAlert(p: Prayer, mode: AlertMode) = context.dataStore.edit { it[K.alert(p)] = mode.name }
     suspend fun setFajrSound(path: String) = context.dataStore.edit { it[K.fajrSound] = path }
     suspend fun setMainSound(path: String) = context.dataStore.edit { it[K.mainSound] = path }

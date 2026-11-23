@@ -70,7 +70,8 @@ fun AdhanSettingsScreen(vm: PrayerViewModel) {
     val context = LocalContext.current
     var sounds by remember { mutableStateOf(AdhanPlaybackService.availableSounds(context)) }
     var pickFor by remember { mutableStateOf<String?>(null) }   // "fajr" | "main"
-    var testScheduled by remember { mutableStateOf(false) }
+    // Refresh the sound list after background downloads finish.
+    androidx.compose.runtime.LaunchedEffect(s.busyMessage, s.message) { sounds = AdhanPlaybackService.availableSounds(context) }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             AdhanPlaybackService.importSound(context, uri)?.let { path ->
@@ -89,18 +90,7 @@ fun AdhanSettingsScreen(vm: PrayerViewModel) {
         Text("Adhan", style = MaterialTheme.typography.headlineMedium)
         Text("Choose how each prayer is announced", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
 
-        SoftCard(selected = true) {
-            CardTitle(Icons.Outlined.NotificationsActive, "Test the Adhan")
-            Text(
-                if (testScheduled) "Test Adhan set for 1 minute from now – lock your phone and wait."
-                else "Plays a real Adhan alarm in 1 minute so you can check it works with the screen locked.",
-                style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant
-            )
-            Spacer(Modifier.padding(4.dp))
-            Button(onClick = { AdhanScheduler.scheduleTest(context); testScheduled = true }, shape = RoundedCornerShape(50)) {
-                Text("Test Adhan in 1 minute")
-            }
-        }
+        AdhanHealthCheck(onDownloadAdhan = { vm.downloadAdhan(); sounds = AdhanPlaybackService.availableSounds(context) })
 
         SoftCard {
             CardTitle(Icons.Outlined.Alarm, "Alert for each prayer")
@@ -127,7 +117,7 @@ fun AdhanSettingsScreen(vm: PrayerViewModel) {
 
         SoftCard {
             CardTitle(Icons.Outlined.MusicNote, "Adhan sound")
-            if (sounds.isEmpty()) Text("No Adhan recording chosen yet – your phone's alarm tone plays instead. Tap 'Choose from phone' and pick an Adhan MP3 (from Downloads, WhatsApp, etc.).",
+            Text("Real Adhan recordings download automatically (once) and then work offline. You can also use your own MP3.",
                 style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
             SoundPicker("Fajr (calm)", s.settings.fajrSound, sounds, vm::setFajrSound) { AdhanPlaybackService.preview(context, Prayer.FAJR, it) }
             FilledTonalButton(onClick = { pickFor = "fajr"; picker.launch(arrayOf("audio/*")) }, shape = RoundedCornerShape(50)) {
@@ -155,17 +145,30 @@ fun AdhanSettingsScreen(vm: PrayerViewModel) {
             CardTitle(Icons.Outlined.Calculate, "Asr & calculation")
             Text("Asr school (also picks Mithl 1/2 from mosque tables)", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(selected = s.settings.autoMadhab, onClick = { vm.setMadhab(null) },
+                    label = { Text("Automatic (${s.settings.effectiveMadhab.label.substringBefore(" (")})") }, shape = RoundedCornerShape(50))
                 Madhab.entries.forEach { m ->
-                    FilterChip(selected = s.settings.madhab == m, onClick = { vm.setMadhab(m) }, label = { Text(m.label) }, shape = RoundedCornerShape(50))
+                    FilterChip(selected = !s.settings.autoMadhab && s.settings.madhab == m, onClick = { vm.setMadhab(m) }, label = { Text(m.label) }, shape = RoundedCornerShape(50))
                 }
             }
             Spacer(Modifier.padding(4.dp))
-            Text("Method when no mosque timetable is available", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+            Text("Calculation method (when no mosque timetable is used)", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(selected = s.settings.autoMethod, onClick = { vm.setMethod(null) },
+                    label = { Text("Automatic by country (${s.settings.effectiveMethod.label})") }, shape = RoundedCornerShape(50))
                 CalculationMethod.entries.forEach { m ->
-                    FilterChip(selected = s.settings.method == m, onClick = { vm.setMethod(m) }, label = { Text(m.label) }, shape = RoundedCornerShape(50))
+                    FilterChip(selected = !s.settings.autoMethod && s.settings.method == m, onClick = { vm.setMethod(m) }, label = { Text(m.label) }, shape = RoundedCornerShape(50))
                 }
             }
+        }
+
+        SoftCard {
+            CardTitle(Icons.Outlined.MusicNote, "About the Adhan recordings")
+            com.md12ali.sakinah.audio.AdhanAudio.catalog.forEach { r ->
+                Text("${r.title} – ${r.credit} (${r.license})", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp))
+            }
+            Text("Recordings from Wikimedia Commons, used under their free licences.", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
         }
 
         SoftCard {
@@ -199,15 +202,19 @@ private fun CardTitle(icon: ImageVector, title: String) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SoundPicker(label: String, current: String, options: List<String>, onPick: (String) -> Unit, onPreview: (String) -> Unit) {
+    val context = LocalContext.current
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.titleSmall)
-            Text(current.substringAfterLast('/'), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(AdhanPlaybackService.label(context, current), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         IconButton(onClick = { onPreview(current) }) { Icon(Icons.Outlined.PlayArrow, "Preview", tint = MaterialTheme.colorScheme.primary) }
     }
-    if (options.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        options.forEach { o -> FilterChip(selected = o == current, onClick = { onPick(o) }, label = { Text(o.substringAfterLast('/')) }, shape = RoundedCornerShape(50)) }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        FilterChip(selected = current.isBlank(), onClick = { onPick("") }, label = { Text("Automatic") }, shape = RoundedCornerShape(50))
+        options.forEach { o ->
+            FilterChip(selected = o == current, onClick = { onPick(o) }, label = { Text(AdhanPlaybackService.label(context, o)) }, shape = RoundedCornerShape(50))
+        }
     }
 }
 

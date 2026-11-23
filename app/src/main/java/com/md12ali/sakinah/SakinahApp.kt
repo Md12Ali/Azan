@@ -15,6 +15,7 @@ class AppContainer(context: Context) {
     val db = AppDatabase.create(context)
     val settings = SettingsRepository(context)
     val location = LocationHelper(context)
+    val geo = com.md12ali.sakinah.location.GeoHelper(context)
     val fetcher = TimetableFetcher(context, db.timetable())
     val prayerRepository = PrayerRepository(settings, db.timetable(), fetcher)
 }
@@ -28,5 +29,6 @@ class SakinahApp : Application() {
         container = AppContainer(this)
         Notifications.createChannels(this)
         DailyRefreshWorker.schedule(this)
+        if (com.md12ali.sakinah.audio.AdhanAudio.downloaded(this).isEmpty()) DailyRefreshWorker.runSoon(this)
     }
 }

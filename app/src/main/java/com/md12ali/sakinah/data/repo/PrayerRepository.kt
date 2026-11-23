@@ -50,7 +50,7 @@ class PrayerRepository(
                 ActivePlace(m.name, "Chosen mosque · ${m.city}", m, m.latitude, m.longitude)
             }
             LocationMode.CITY_CALC -> ActivePlace(
-                s.cityName ?: "London", "Calculated · ${s.method.label}", null,
+                s.cityName ?: "London", "Calculated · ${s.effectiveMethod.label}", null,
                 s.cityLat ?: london.latitude, s.cityLon ?: london.longitude
             )
             LocationMode.AUTO_GPS -> {
@@ -63,8 +63,10 @@ class PrayerRepository(
                         val km = Places.distanceKm(lat, lon, m.latitude, m.longitude)
                         ActivePlace(m.name, "Nearest central mosque · %.1f km".format(km), m, lat, lon)
                     } else {
-                        val city = Places.nearestCity(lat, lon)
-                        ActivePlace("Near ${city.name}", "No central mosque within 25 km · calculated for your GPS", null, lat, lon)
+                        ActivePlace(
+                            s.gpsPlaceName ?: "Your location",
+                            "GPS · ${s.effectiveMethod.label}", null, lat, lon
+                        )
                     }
                 }
             }
@@ -79,7 +81,7 @@ class PrayerRepository(
         val cachedAhead = dao.futureDays(mosque.id, today.toString())
         // Masjidbox gives 1 day per fetch, Mawaqit/CSV a whole year – refetch when < 2 days are cached.
         if (!force && cachedAhead >= 2) return s.mosqueSources[mosque.id]
-        val worked = fetcher.fetch(mosque, s.mosqueSources[mosque.id], today, hanafiAsr = s.madhab == com.md12ali.sakinah.core.prayer.Madhab.HANAFI)
+        val worked = fetcher.fetch(mosque, s.mosqueSources[mosque.id], today, hanafiAsr = s.effectiveMadhab == com.md12ali.sakinah.core.prayer.Madhab.HANAFI)
         if (worked != null && worked != s.mosqueSources[mosque.id]) settingsRepo.setMosqueSource(mosque.id, worked)
         return worked
     }
@@ -92,11 +94,12 @@ class PrayerRepository(
             dao.day(mosque.id, date.toString())?.let { return it.toPrayerDay(date, mosque) to place }
             val calc = PrayerCalculator.calculate(
                 date, mosque.latitude, mosque.longitude, zone,
-                CalcParams(mosque.method, mosque.madhab, mosque.fallbackOffsets)
+                CalcParams(mosque.method, s.effectiveMadhab, mosque.fallbackOffsets)
             )
             return calc.copy(sourceDetail = "Timetable not downloaded yet · calculated for ${mosque.city}") to place
         }
-        val calc = PrayerCalculator.calculate(date, place.latitude, place.longitude, zone, CalcParams(s.method, s.madhab, Offsets()))
+        val calc = PrayerCalculator.calculate(date, place.latitude, place.longitude, zone,
+            CalcParams(s.effectiveMethod, s.effectiveMadhab, Offsets()))
         return calc to place
     }
 

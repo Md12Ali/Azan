@@ -45,7 +45,7 @@ class MainActivity : ComponentActivity() {
 private val tabs = listOf(
     NavTab("prayer", "Prayer", Icons.Outlined.AccessTime),
     NavTab("qibla", "Qibla", Icons.Outlined.Explore),
-    NavTab("location", "Mosque", Icons.Outlined.Mosque),
+    NavTab("location", "Location", Icons.Outlined.Mosque),
     NavTab("settings", "Adhan", Icons.Outlined.Tune)
 )
 

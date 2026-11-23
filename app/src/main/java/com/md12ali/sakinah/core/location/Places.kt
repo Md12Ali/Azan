@@ -49,7 +49,13 @@ data class MosqueProfile(
     val coordinatesApproximate: Boolean = false
 )
 
-data class City(val name: String, val latitude: Double, val longitude: Double)
+data class City(
+    val name: String,
+    val latitude: Double,
+    val longitude: Double,
+    val countryCode: String? = "GB",
+    val country: String? = "United Kingdom"
+)
 
 val UK_MOSQUE_OFFSETS = Offsets(dhuhr = 5, maghrib = 3)
 
@@ -132,8 +138,62 @@ object Places {
             website = "https://www.edinburghcentralmosque.com")
     )
 
-    /** Manual city list (used for Auto-GPS city naming and when a user prefers plain calculation). */
+    /** UK cities (one per central mosque). */
     val ukCities: List<City> = mosques.map { City(it.city, it.latitude, it.longitude) }.distinctBy { it.name }
+
+    /**
+     * Built-in world cities (works offline, no search service needed). Coordinates are city centres.
+     * Any other city can be found with the in-app worldwide search (Android Geocoder) or GPS.
+     */
+    val worldCities: List<City> = listOf(
+        w("Makkah", 21.4225, 39.8262, "SA", "Saudi Arabia"), w("Madinah", 24.4672, 39.6111, "SA", "Saudi Arabia"),
+        w("Riyadh", 24.7136, 46.6753, "SA", "Saudi Arabia"), w("Jeddah", 21.4858, 39.1925, "SA", "Saudi Arabia"),
+        w("Dubai", 25.2048, 55.2708, "AE", "United Arab Emirates"), w("Abu Dhabi", 24.4539, 54.3773, "AE", "United Arab Emirates"),
+        w("Doha", 25.2854, 51.5310, "QA", "Qatar"), w("Kuwait City", 29.3759, 47.9774, "KW", "Kuwait"),
+        w("Manama", 26.2285, 50.5860, "BH", "Bahrain"), w("Muscat", 23.5880, 58.3829, "OM", "Oman"),
+        w("Sana'a", 15.3694, 44.1910, "YE", "Yemen"), w("Amman", 31.9454, 35.9284, "JO", "Jordan"),
+        w("Jerusalem", 31.7683, 35.2137, "PS", "Palestine"), w("Gaza", 31.5017, 34.4668, "PS", "Palestine"),
+        w("Damascus", 33.5138, 36.2765, "SY", "Syria"), w("Beirut", 33.8938, 35.5018, "LB", "Lebanon"),
+        w("Baghdad", 33.3152, 44.3661, "IQ", "Iraq"), w("Tehran", 35.6892, 51.3890, "IR", "Iran"),
+        w("Cairo", 30.0444, 31.2357, "EG", "Egypt"), w("Alexandria", 31.2001, 29.9187, "EG", "Egypt"),
+        w("Khartoum", 15.5007, 32.5599, "SD", "Sudan"), w("Tripoli", 32.8872, 13.1913, "LY", "Libya"),
+        w("Tunis", 36.8065, 10.1815, "TN", "Tunisia"), w("Algiers", 36.7538, 3.0588, "DZ", "Algeria"),
+        w("Casablanca", 33.5731, -7.5898, "MA", "Morocco"), w("Rabat", 34.0209, -6.8416, "MA", "Morocco"),
+        w("Istanbul", 41.0082, 28.9784, "TR", "Türkiye"), w("Ankara", 39.9334, 32.8597, "TR", "Türkiye"),
+        w("Baku", 40.4093, 49.8671, "AZ", "Azerbaijan"), w("Tashkent", 41.2995, 69.2401, "UZ", "Uzbekistan"),
+        w("Almaty", 43.2220, 76.8512, "KZ", "Kazakhstan"), w("Kabul", 34.5553, 69.2075, "AF", "Afghanistan"),
+        w("Karachi", 24.8607, 67.0011, "PK", "Pakistan"), w("Lahore", 31.5204, 74.3587, "PK", "Pakistan"),
+        w("Islamabad", 33.6844, 73.0479, "PK", "Pakistan"), w("Mirpur (AJK)", 33.1478, 73.7518, "PK", "Pakistan"),
+        w("Peshawar", 34.0151, 71.5249, "PK", "Pakistan"), w("Delhi", 28.6139, 77.2090, "IN", "India"),
+        w("Mumbai", 19.0760, 72.8777, "IN", "India"), w("Hyderabad", 17.3850, 78.4867, "IN", "India"),
+        w("Kolkata", 22.5726, 88.3639, "IN", "India"), w("Dhaka", 23.8103, 90.4125, "BD", "Bangladesh"),
+        w("Sylhet", 24.8949, 91.8687, "BD", "Bangladesh"), w("Chittagong", 22.3569, 91.7832, "BD", "Bangladesh"),
+        w("Colombo", 6.9271, 79.8612, "LK", "Sri Lanka"), w("Kathmandu", 27.7172, 85.3240, "NP", "Nepal"),
+        w("Kuala Lumpur", 3.1390, 101.6869, "MY", "Malaysia"), w("Singapore", 1.3521, 103.8198, "SG", "Singapore"),
+        w("Jakarta", -6.2088, 106.8456, "ID", "Indonesia"), w("Surabaya", -7.2575, 112.7521, "ID", "Indonesia"),
+        w("Bandar Seri Begawan", 4.9031, 114.9398, "BN", "Brunei"), w("Manila", 14.5995, 120.9842, "PH", "Philippines"),
+        w("Lagos", 6.5244, 3.3792, "NG", "Nigeria"), w("Kano", 12.0022, 8.5920, "NG", "Nigeria"),
+        w("Abuja", 9.0765, 7.3986, "NG", "Nigeria"), w("Dakar", 14.7167, -17.4677, "SN", "Senegal"),
+        w("Mogadishu", 2.0469, 45.3182, "SO", "Somalia"), w("Hargeisa", 9.5600, 44.0650, "SO", "Somalia"),
+        w("Nairobi", -1.2921, 36.8219, "KE", "Kenya"), w("Addis Ababa", 8.9806, 38.7578, "ET", "Ethiopia"),
+        w("Dar es Salaam", -6.7924, 39.2083, "TZ", "Tanzania"), w("Johannesburg", -26.2041, 28.0473, "ZA", "South Africa"),
+        w("Cape Town", -33.9249, 18.4241, "ZA", "South Africa"), w("Paris", 48.8566, 2.3522, "FR", "France"),
+        w("Brussels", 50.8503, 4.3517, "BE", "Belgium"), w("Amsterdam", 52.3676, 4.9041, "NL", "Netherlands"),
+        w("Berlin", 52.5200, 13.4050, "DE", "Germany"), w("Frankfurt", 50.1109, 8.6821, "DE", "Germany"),
+        w("Madrid", 40.4168, -3.7038, "ES", "Spain"), w("Rome", 41.9028, 12.4964, "IT", "Italy"),
+        w("Vienna", 48.2082, 16.3738, "AT", "Austria"), w("Stockholm", 59.3293, 18.0686, "SE", "Sweden"),
+        w("Oslo", 59.9139, 10.7522, "NO", "Norway"), w("Copenhagen", 55.6761, 12.5683, "DK", "Denmark"),
+        w("Dublin", 53.3498, -6.2603, "IE", "Ireland"), w("Sarajevo", 43.8563, 18.4131, "BA", "Bosnia and Herzegovina"),
+        w("Tirana", 41.3275, 19.8187, "AL", "Albania"), w("Pristina", 42.6629, 21.1655, "XK", "Kosovo"),
+        w("Moscow", 55.7558, 37.6173, "RU", "Russia"), w("Kazan", 55.7887, 49.1221, "RU", "Russia"),
+        w("New York", 40.7128, -74.0060, "US", "United States"), w("Chicago", 41.8781, -87.6298, "US", "United States"),
+        w("Houston", 29.7604, -95.3698, "US", "United States"), w("Los Angeles", 34.0522, -118.2437, "US", "United States"),
+        w("Dearborn", 42.3223, -83.1763, "US", "United States"), w("Toronto", 43.6532, -79.3832, "CA", "Canada"),
+        w("Montreal", 45.5017, -73.5673, "CA", "Canada"), w("Sydney", -33.8688, 151.2093, "AU", "Australia"),
+        w("Melbourne", -37.8136, 144.9631, "AU", "Australia"), w("Auckland", -36.8509, 174.7645, "NZ", "New Zealand")
+    )
+
+    private fun w(name: String, lat: Double, lon: Double, cc: String, country: String) = City(name, lat, lon, cc, country)
 
     fun mosqueById(id: String?): MosqueProfile? = mosques.firstOrNull { it.id == id }
 
