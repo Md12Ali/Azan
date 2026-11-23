@@ -33,17 +33,17 @@ jobs:
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Sakinah-Adhan-${{ github.run_number }}.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Azan-${{ github.run_number }}.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Sakinah-Adhan-apk
-          path: Sakinah-Adhan-${{ github.run_number }}.apk
+          name: Azan-apk
+          path: Azan-${{ github.run_number }}.apk
 
       - name: Publish release with APK
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          name: Sakinah Adhan – build ${{ github.run_number }}
+          name: Azan – build ${{ github.run_number }}
           body: Install on Android – allow "Install unknown apps" for your browser when asked.
-          files: Sakinah-Adhan-${{ github.run_number }}.apk
+          files: Azan-${{ github.run_number }}.apk

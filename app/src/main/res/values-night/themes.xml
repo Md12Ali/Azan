@@ -2,6 +2,6 @@
     <style name="Theme.Sakinah" parent="android:Theme.Material.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowBackground">@color/teal_deep</item>
+        <item name="android:windowBackground">@color/emerald_deep</item>
     </style>
 </resources>

@@ -1,4 +1,4 @@
-# Sakinah – Adhan, Prayer Times & Qibla (Android)
+# Azan – Adhan, Prayer Times & Qibla (Android)
 
 A calm, 100% free Android app (Kotlin + Jetpack Compose) that plays the Adhan using the **published timetable of the nearest UK central mosque** to wherever you are. No ads, no paywall, no Google Play Services needed.
 
@@ -76,4 +76,4 @@ ui/              Compose: Prayer dashboard (countdown ring), Mosque selector, Ad
 `USE_EXACT_ALARM` (granted automatically) is limited by Google Play to alarm-clock and calendar apps, so this project uses `SCHEDULE_EXACT_ALARM` and asks the user once.
 
 ## Get the APK without Android Studio
-Push this project to GitHub. The workflow in `.github/workflows/build-apk.yml` builds the app on GitHub's servers and publishes **Releases → Sakinah-Adhan-N.apk**. Open that link on your phone, tap the APK and allow "Install unknown apps". If a build fails, the **Actions** tab shows the error log.
+Push this project to GitHub. The workflow in `.github/workflows/build-apk.yml` builds the app on GitHub's servers and publishes **Releases → Azan-N.apk**. Open that link on your phone, tap the APK and allow "Install unknown apps". If a build fails, the **Actions** tab shows the error log.

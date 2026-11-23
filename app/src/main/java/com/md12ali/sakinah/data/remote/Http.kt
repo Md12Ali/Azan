@@ -13,7 +13,7 @@ object Http {
                 connectTimeout = timeoutMs
                 readTimeout = timeoutMs
                 instanceFollowRedirects = true
-                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) SakinahApp/1.0")
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) AzanApp/1.0")
                 setRequestProperty("Accept-Language", "en-GB,en")
             }
             try {

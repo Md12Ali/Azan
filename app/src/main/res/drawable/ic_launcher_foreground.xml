@@ -1,9 +1,13 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <!-- crescent -->
-    <path android:fillColor="#C9A44C"
-        android:pathData="M60,32 A22,22 0 1,0 60,76 A17,17 0 1,1 60,32 Z" />
-    <!-- star -->
-    <path android:fillColor="#F7F2E8"
-        android:pathData="M68,46 L70,51 L75,51 L71,54 L72.5,59 L68,56 L63.5,59 L65,54 L61,51 L66,51 Z" />
+    <!-- dome -->
+    <path android:fillColor="#FFD4AF37"
+        android:pathData="M36,74 L36,62 C36,52 44,47 50,44 C52,42 53,40 54,37 C55,40 56,42 58,44 C64,47 72,52 72,62 L72,74 Z" />
+    <!-- base -->
+    <path android:fillColor="#FFD4AF37" android:pathData="M32,74 h44 v4 h-44 z" />
+    <!-- crescent on finial -->
+    <path android:fillColor="#FFF6E7B0"
+        android:pathData="M56.5,26 A5.5,5.5 0 1,0 56.5,35 A4.3,4.3 0 1,1 56.5,26 Z" />
+    <!-- door arch -->
+    <path android:fillColor="#FF054D3A" android:pathData="M50,74 L50,66 C50,63 52,61 54,61 C56,61 58,63 58,66 L58,74 Z" />
 </vector>

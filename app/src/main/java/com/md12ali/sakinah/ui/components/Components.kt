@@ -138,6 +138,35 @@ fun MosqueSilhouette(modifier: Modifier = Modifier, color: Color = Color.White.c
     }
 }
 
+/** Fine gold Rub el Hizb (8-point star) lattice – an elegant Islamic pattern overlay. */
+@Composable
+fun GeometricPattern(modifier: Modifier = Modifier, color: Color = Gold.copy(alpha = 0.10f), cell: Dp = 56.dp) {
+    Canvas(modifier) {
+        val step = cell.toPx()
+        val r = step * 0.30f
+        var row = 0
+        var y = 0f
+        while (y < size.height + step) {
+            var x = if (row % 2 == 0) 0f else step / 2
+            while (x < size.width + step) {
+                val path = Path()
+                for (rot in listOf(0.0, Math.PI / 4)) {
+                    for (i in 0..4) {
+                        val a = rot + i * Math.PI / 2 + Math.PI / 4
+                        val px = x + (r * cos(a)).toFloat(); val py = y + (r * sin(a)).toFloat()
+                        if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+                    }
+                    path.close()
+                }
+                drawPath(path, color, style = Stroke(1.dp.toPx()))
+                drawCircle(color, r * 0.28f, Offset(x, y), style = Stroke(1.dp.toPx()))
+                x += step
+            }
+            y += step * 0.87f; row++
+        }
+    }
+}
+
 /** Round tinted icon badge. */
 @Composable
 fun IconBadge(icon: ImageVector, tint: Color, background: Color, size: Dp = 40.dp) {

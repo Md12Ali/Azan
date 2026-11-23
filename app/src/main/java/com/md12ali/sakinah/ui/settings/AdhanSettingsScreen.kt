@@ -133,7 +133,7 @@ fun AdhanSettingsScreen(vm: PrayerViewModel) {
 
         SoftCard {
             CardTitle(Icons.Outlined.BatteryChargingFull, "Make sure it always plays")
-            Text("Some phones (Samsung, Xiaomi, OnePlus) block background alarms. Set Sakinah's battery use to 'Unrestricted'.",
+            Text("Some phones (Samsung, Xiaomi, OnePlus) block background alarms. Set Azan's battery use to 'Unrestricted'.",
                 style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
             Spacer(Modifier.padding(4.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

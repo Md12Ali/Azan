@@ -156,7 +156,7 @@ fun QiblaScreen(vm: PrayerViewModel) {
 
     Column(
         Modifier.fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Navy950, Navy900, Color(0xFF16305A))))
+            .background(Brush.verticalGradient(listOf(Color(0xFF010F0B), Navy950, Color(0xFF07402F))))
             .verticalScroll(rememberScrollState())
             .statusBarsPadding()
             .padding(horizontal = 20.dp)

@@ -57,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.md12ali.sakinah.core.prayer.Prayer
 import com.md12ali.sakinah.core.prayer.TimeSource
 import com.md12ali.sakinah.data.settings.AlertMode
+import com.md12ali.sakinah.ui.components.GeometricPattern
 import com.md12ali.sakinah.ui.components.IconBadge
 import com.md12ali.sakinah.ui.components.MosqueSilhouette
 import com.md12ali.sakinah.ui.components.Pill
@@ -169,11 +170,21 @@ private fun Hero(s: PrayerUiState, onOpenLocation: () -> Unit, onRefresh: () -> 
 
     Crossfade(period, label = "sky") { p ->
         Box(Modifier.fillMaxWidth().background(skyFor(p))) {
+            GeometricPattern(Modifier.matchParentSize())
             if (isNight(p)) StarField(Modifier.matchParentSize())
             SunArc(sunProgress, Modifier.fillMaxWidth().height(150.dp).align(Alignment.BottomCenter).padding(bottom = 40.dp))
             MosqueSilhouette(Modifier.fillMaxWidth().height(130.dp).align(Alignment.BottomCenter).padding(bottom = 24.dp))
 
             Column(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 20.dp).padding(top = 8.dp, bottom = 64.dp)) {
+                // Wordmark
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 12.dp)) {
+                    Text("AZAN", color = Gold, fontSize = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = 6.sp)
+                    Spacer(Modifier.width(10.dp))
+                    Text("أذان", style = arabicStyle(20), color = GoldSoft)
+                    Spacer(Modifier.weight(1f))
+                    Text(s.now.format(DateTimeFormatter.ofPattern("HH:mm")), color = Color.White.copy(alpha = 0.85f),
+                        style = MaterialTheme.typography.titleMedium)
+                }
                 // Place row
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Row(
@@ -242,7 +253,12 @@ private fun PrayerCard(
     val alpha = if (isPast && !isNext) 0.55f else 1f
     Surface(
         shape = RoundedCornerShape(22.dp), color = container,
-        border = if (isNext || isCurrent) null else androidx.compose.foundation.BorderStroke(1.dp, cs.outlineVariant),
+        border = when {
+            isNext -> androidx.compose.foundation.BorderStroke(1.5.dp, Gold)
+            isCurrent -> null
+            else -> androidx.compose.foundation.BorderStroke(1.dp, cs.outlineVariant)
+        },
+        shadowElevation = if (isNext) 8.dp else 0.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
