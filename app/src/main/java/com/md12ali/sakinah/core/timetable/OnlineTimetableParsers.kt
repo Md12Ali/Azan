@@ -3,28 +3,167 @@ package com.md12ali.sakinah.core.timetable
 import com.md12ali.sakinah.core.prayer.Prayer
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * Pure-Kotlin parsers for mosque timetable pages (no Android types, so they are unit-testable).
  * The Android TimetableFetcher downloads the HTML and hands it to these.
  *
- * IMPORTANT: these platforms have no official public API. The parsers read what the public page
- * contains and fail safely (return empty) if a site changes – the app then moves to the next source
- * and finally to on-device calculation, so the Adhan never silently stops.
+ * Mosques have no common API, so we support the page shapes UK central mosques actually use:
+ *  1. Dated table (whole month/year)  – East London Mosque, Birmingham Central Mosque  → [parseDatedTable]
+ *  2. "Today" box: name + begin + jamaat – Leicester, Manchester, Birmingham home, Masjidbox → [parseTodayWidget]
+ *  3. Mawaqit embedded JSON                                                             → [parseMawaqit]
+ * Everything fails safely (empty/null) so the app falls back to the next source and finally to calculation.
  */
 object OnlineTimetableParsers {
 
     private val five = listOf(Prayer.FAJR, Prayer.DHUHR, Prayer.ASR, Prayer.MAGHRIB, Prayer.ISHA)
     private val six = listOf(Prayer.FAJR, Prayer.SUNRISE, Prayer.DHUHR, Prayer.ASR, Prayer.MAGHRIB, Prayer.ISHA)
 
+    // ------------------------------------------------------------- dated tables
+
+    /** What each time column in a dated row means. SKIP = ignore (e.g. Zawal, or the Asr Mithl you don't follow). */
+    enum class Col { SUNRISE, FAJR, FAJR_J, DHUHR, DHUHR_J, ASR, ASR_J, MAGHRIB, MAGHRIB_J, ISHA, ISHA_J, ASR_MITHL1, ASR_MITHL2, SKIP }
+
+    /** Known table layouts (time columns only, in order – non-time cells such as Hijri day/month are ignored). */
+    val layouts: Map<String, List<Col>> = mapOf(
+        // eastlondonmosque.org.uk/prayer-times – Sunrise | Fajr B J | Zuhr B J | Asr Mithl1 Mithl2 J | Maghrib B J | Isha B J
+        "elm" to listOf(Col.SUNRISE, Col.FAJR, Col.FAJR_J, Col.DHUHR, Col.DHUHR_J, Col.ASR_MITHL1, Col.ASR_MITHL2, Col.ASR_J,
+            Col.MAGHRIB, Col.MAGHRIB_J, Col.ISHA, Col.ISHA_J),
+        // centralmosque.org.uk/timetable – Fajr B J | Sunrise | Zawal | Zuhr B J | Asr B J | Maghrib B J | Isha B J
+        "bcm" to listOf(Col.FAJR, Col.FAJR_J, Col.SUNRISE, Col.SKIP, Col.DHUHR, Col.DHUHR_J, Col.ASR, Col.ASR_J,
+            Col.MAGHRIB, Col.MAGHRIB_J, Col.ISHA, Col.ISHA_J)
+    )
+
+    private val timeRx = Regex("""\b(\d{1,2}[:.]\d{2})\s*([AaPp][Mm])?\b""")
+    private val numericDateRx = Regex("""\b(\d{1,2})/(\d{1,2})/(\d{4})\b""")
+    private val longDateRx = Regex("""\b(\d{1,2})(?:st|nd|rd|th)?\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})\b""", RegexOption.IGNORE_CASE)
+
+    /**
+     * Reads every row that starts with a date ("23/11/2026" or "23rd November 2026") followed by times.
+     * @param hanafiAsr when the table lists both Asr Mithl 1 and Mithl 2, pick Mithl 2 (Hanafi) or Mithl 1.
+     */
+    fun parseDatedTable(html: String, layoutId: String, hanafiAsr: Boolean = true): List<TimetableRow> {
+        val layout = layouts[layoutId] ?: return emptyList()
+        val text = htmlToText(html)
+        data class D(val date: LocalDate, val start: Int, val end: Int)
+        val dates = buildList {
+            numericDateRx.findAll(text).forEach { m ->
+                runCatching { LocalDate.of(m.groupValues[3].toInt(), m.groupValues[2].toInt(), m.groupValues[1].toInt()) }
+                    .getOrNull()?.let { add(D(it, m.range.first, m.range.last + 1)) }
+            }
+            longDateRx.findAll(text).forEach { m ->
+                runCatching {
+                    LocalDate.parse("${m.groupValues[1]} ${m.groupValues[2].lowercase().replaceFirstChar { it.uppercase() }} ${m.groupValues[3]}",
+                        DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.ENGLISH))
+                }.getOrNull()?.let { add(D(it, m.range.first, m.range.last + 1)) }
+            }
+        }.sortedBy { it.start }
+
+        val rows = mutableMapOf<LocalDate, TimetableRow>()
+        dates.forEachIndexed { i, d ->
+            val segment = text.substring(d.end, if (i + 1 < dates.size) dates[i + 1].start else minOf(text.length, d.end + 400))
+            val times = timeRx.findAll(segment).map { it.groupValues[1] + it.groupValues[2] }.toList()
+            if (times.size < layout.size) return@forEachIndexed
+            val begins = mutableMapOf<Prayer, LocalTime>()
+            val jamaat = mutableMapOf<Prayer, LocalTime>()
+            layout.zip(times).forEach { (col, raw) ->
+                when (col) {
+                    Col.SUNRISE -> TimetableCsv.parseTime(raw, Prayer.SUNRISE)?.let { begins[Prayer.SUNRISE] = it }
+                    Col.FAJR -> TimetableCsv.parseTime(raw, Prayer.FAJR)?.let { begins[Prayer.FAJR] = it }
+                    Col.FAJR_J -> TimetableCsv.parseTime(raw, Prayer.FAJR)?.let { jamaat[Prayer.FAJR] = it }
+                    Col.DHUHR -> TimetableCsv.parseTime(raw, Prayer.DHUHR)?.let { begins[Prayer.DHUHR] = it }
+                    Col.DHUHR_J -> TimetableCsv.parseTime(raw, Prayer.DHUHR)?.let { jamaat[Prayer.DHUHR] = it }
+                    Col.ASR -> TimetableCsv.parseTime(raw, Prayer.ASR)?.let { begins[Prayer.ASR] = it }
+                    Col.ASR_MITHL1 -> if (!hanafiAsr) TimetableCsv.parseTime(raw, Prayer.ASR)?.let { begins[Prayer.ASR] = it }
+                    Col.ASR_MITHL2 -> if (hanafiAsr) TimetableCsv.parseTime(raw, Prayer.ASR)?.let { begins[Prayer.ASR] = it }
+                    Col.ASR_J -> TimetableCsv.parseTime(raw, Prayer.ASR)?.let { jamaat[Prayer.ASR] = it }
+                    Col.MAGHRIB -> TimetableCsv.parseTime(raw, Prayer.MAGHRIB)?.let { begins[Prayer.MAGHRIB] = it }
+                    Col.MAGHRIB_J -> TimetableCsv.parseTime(raw, Prayer.MAGHRIB)?.let { jamaat[Prayer.MAGHRIB] = it }
+                    Col.ISHA -> TimetableCsv.parseTime(raw, Prayer.ISHA)?.let { begins[Prayer.ISHA] = it }
+                    Col.ISHA_J -> TimetableCsv.parseTime(raw, Prayer.ISHA)?.let { jamaat[Prayer.ISHA] = it }
+                    Col.SKIP -> Unit
+                }
+            }
+            if (begins.keys.containsAll(five) && isChronological(begins)) rows[d.date] = TimetableRow(d.date, begins, jamaat)
+        }
+        return rows.values.sortedBy { it.date }
+    }
+
+    // ------------------------------------------------------------ "today" boxes
+
+    private val nameRx = Regex(
+        """\b(Fajr|Fajar|Fajir|Subh|Sunrise|Shuruq|Shurooq|Sunrise|Dhuhr|Zuhr|Duhr|Zohar|Zuhar|Asr|Asar|Maghrib|Magrib|Maghreb|Isha|Ishaa|Esha|Ishā)\b""",
+        RegexOption.IGNORE_CASE
+    )
+
+    private fun nameToPrayer(n: String): Prayer? = when (n.lowercase()) {
+        "fajr", "fajar", "fajir", "subh" -> Prayer.FAJR
+        "sunrise", "shuruq", "shurooq" -> Prayer.SUNRISE
+        "dhuhr", "zuhr", "duhr", "zohar", "zuhar" -> Prayer.DHUHR
+        "asr", "asar" -> Prayer.ASR
+        "maghrib", "magrib", "maghreb" -> Prayer.MAGHRIB
+        "isha", "ishaa", "esha", "ishā" -> Prayer.ISHA
+        else -> null
+    }
+
+    /**
+     * A "today" box where each prayer name is followed by its begin time and (optionally) jamaat time, e.g.
+     *   "Fajar 6:00 7.00  Sunrise 7:36  Zuhr 11:54 1.15 …"          (Leicester Central Mosque)
+     *   "Fajr Start: 5.43 Jamaat: 7.00 … Maghrib Jamaat: 4.04 …"     (Manchester Central Mosque)
+     *   "Fajr 6:12 AM 6:30 AM Sunrise 7:41 AM Zuhr 11:58 AM 1:15 PM" (Birmingham Central Mosque)
+     * Times are only taken from the text between one prayer name and the next, and the first block whose
+     * five begin times are in order wins (skips menus and countdowns like "5h to Fajr").
+     */
+    fun parseTodayWidget(html: String, today: LocalDate): TimetableRow? {
+        val text = htmlToText(html)
+        val names = nameRx.findAll(text).mapNotNull { m -> nameToPrayer(m.value)?.let { it to m } }.toList()
+        for (startIdx in names.indices) {
+            if (names[startIdx].first != Prayer.FAJR) continue
+            val begins = mutableMapOf<Prayer, LocalTime>()
+            val jamaat = mutableMapOf<Prayer, LocalTime>()
+            var expected = 0 // index into six
+            var i = startIdx
+            while (i < names.size && expected < six.size) {
+                val (p, m) = names[i]
+                val want = six[expected]
+                if (p != want) {
+                    if (want == Prayer.SUNRISE && p == Prayer.DHUHR) { expected++; continue } // sunrise is optional
+                    break
+                }
+                val segEnd = if (i + 1 < names.size) names[i + 1].second.range.first else minOf(text.length, m.range.last + 120)
+                val seg = text.substring(m.range.last + 1, segEnd).take(120)
+                val times = timeRx.findAll(seg).mapNotNull { TimetableCsv.parseTime(it.groupValues[1] + it.groupValues[2], p) }.take(2).toList()
+                if (times.isEmpty()) break
+                if (p == Prayer.SUNRISE) begins[p] = times[0]
+                else if (times.size == 1) {
+                    begins[p] = times[0]
+                    // A lone "Jamaat:" time (Manchester's Maghrib) is both begin and jamaat.
+                    if (Regex("(?i)jama").containsMatchIn(seg)) jamaat[p] = times[0]
+                } else {
+                    val (a, b) = times
+                    if (b.isBefore(a)) { begins[p] = b; jamaat[p] = a } else { begins[p] = a; jamaat[p] = b }
+                }
+                expected++; i++
+            }
+            if (begins.keys.containsAll(five) && isChronological(begins)) return TimetableRow(today, begins, jamaat)
+        }
+        return null
+    }
+
+    /** Masjidbox public pages are "today" boxes too. */
+    fun parseMasjidbox(html: String, today: LocalDate): TimetableRow? = parseTodayWidget(html, today)
+
+    private fun isChronological(b: Map<Prayer, LocalTime>): Boolean =
+        five.mapNotNull { b[it] }.zipWithNext().all { (x, y) -> x.isBefore(y) }
+
     // ------------------------------------------------------------------ Mawaqit
 
     /**
      * Mawaqit mosque pages embed `var confData = {...};` containing:
      *  - "calendar": 12 month objects, each { "1": ["05:30","07:10","12:50","15:10","17:20","18:50"], ... }
-     *    (fajr, shuruq, dhuhr, asr, maghrib, isha)
      *  - "iqamaCalendar": same shape with 5 entries per day, either "+10" (minutes after begin) or "HH:mm".
-     * Returns every day of [year] that could be read.
      */
     fun parseMawaqit(html: String, year: Int): List<TimetableRow> {
         val start = html.indexOf("confData")
@@ -60,36 +199,6 @@ object OnlineTimetableParsers {
         return rows.sortedBy { it.date }
     }
 
-    // ---------------------------------------------------------------- Masjidbox
-
-    /**
-     * Masjidbox public pages show, per prayer, an "Athan" (begin) time and an "Iqamah" (jamaat) time,
-     * plus a single Shuruq time. We strip the HTML to text and read the first two times after each
-     * prayer name. Returns today's row only (the fetcher runs daily, so the cache fills up over time).
-     */
-    fun parseMasjidbox(html: String, today: LocalDate): TimetableRow? {
-        val text = htmlToText(html)
-        val begins = mutableMapOf<Prayer, LocalTime>()
-        val jamaat = mutableMapOf<Prayer, LocalTime>()
-        val names = mapOf(
-            Prayer.FAJR to "Fajr", Prayer.DHUHR to "(?:Dhuhr|Zuhr|Duhr)", Prayer.ASR to "Asr",
-            Prayer.MAGHRIB to "Maghrib", Prayer.ISHA to "Isha"
-        )
-        for ((p, n) in names) {
-            // Prefer a match that has both an Athan and an Iqamah time (skips countdown text like "5h to Fajr").
-            val all = Regex("""\b$n\b\D{0,80}?(\d{1,2}[:.]\d{2})(?:\D{0,80}?(\d{1,2}[:.]\d{2}))?""", RegexOption.IGNORE_CASE)
-                .findAll(text).toList()
-            val m = all.firstOrNull { it.groupValues[2].isNotBlank() } ?: all.firstOrNull() ?: return null
-            val a = TimetableCsv.parseTime(m.groupValues[1], p) ?: return null
-            val b = m.groupValues.getOrNull(2)?.takeIf { it.isNotBlank() }?.let { TimetableCsv.parseTime(it, p) }
-            // Begin is always the earlier of the two.
-            if (b != null && b.isBefore(a)) { begins[p] = b; jamaat[p] = a } else { begins[p] = a; b?.let { jamaat[p] = it } }
-        }
-        Regex("""\b(?:Shuruq|Sunrise|Shurooq)\b\D{0,40}?(\d{1,2}[:.]\d{2})""", RegexOption.IGNORE_CASE).find(text)
-            ?.let { TimetableCsv.parseTime(it.groupValues[1], Prayer.SUNRISE) }?.let { begins[Prayer.SUNRISE] = it }
-        return TimetableRow(today, begins, jamaat)
-    }
-
     // ------------------------------------------------------------ website discovery
 
     /** Looks for timetable links on a mosque's own website. */
@@ -112,7 +221,7 @@ object OnlineTimetableParsers {
         .replace(Regex("(?is)<script.*?</script>"), " ")
         .replace(Regex("(?is)<style.*?</style>"), " ")
         .replace(Regex("<[^>]+>"), " ")
-        .replace("&nbsp;", " ").replace("&amp;", "&")
+        .replace("&nbsp;", " ").replace("&amp;", "&").replace("&#8217;", "'")
         .replace(Regex("\\s+"), " ")
 }
 

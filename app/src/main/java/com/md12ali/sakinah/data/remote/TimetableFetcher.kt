@@ -25,8 +25,12 @@ class TimetableFetcher(
     private val context: Context,
     private val dao: TimetableDao
 ) {
+    private var hanafiAsr = true
 
-    suspend fun fetch(mosque: MosqueProfile, rememberedSource: String?, today: LocalDate = LocalDate.now()): String? {
+    suspend fun fetch(
+        mosque: MosqueProfile, rememberedSource: String?, today: LocalDate = LocalDate.now(), hanafiAsr: Boolean = true
+    ): String? {
+        this.hanafiAsr = hanafiAsr
         val candidates = buildList {
             rememberedSource?.let { decode(it)?.let(::add) }
             addAll(mosque.sources)
@@ -58,12 +62,17 @@ class TimetableFetcher(
         is TimetableSource.BundledCsv -> runCatching {
             context.assets.open(source.assetPath).bufferedReader().use { TimetableCsv.parse(it.readText()) }
         }.getOrDefault(emptyList())
+        is TimetableSource.HtmlTable -> Http.get(source.url)
+            ?.let { OnlineTimetableParsers.parseDatedTable(it, source.layout, hanafiAsr) }.orEmpty()
+        is TimetableSource.TodayWidget -> Http.get(source.url)
+            ?.let { OnlineTimetableParsers.parseTodayWidget(it, today) }?.let { listOf(it) }.orEmpty()
         is TimetableSource.DiscoverFromWebsite -> {
             val html = Http.get(source.url).orEmpty()
             OnlineTimetableParsers.discoverLinks(html)
                 .mapNotNull { decode(it) }
                 .firstNotNullOfOrNull { found -> load(found, today).takeIf { it.isNotEmpty() } }
-                .orEmpty()
+                // No link found? The home page may itself show today's times.
+                ?: OnlineTimetableParsers.parseTodayWidget(html, today)?.let { listOf(it) }.orEmpty()
         }
     }
 
@@ -87,6 +96,9 @@ class TimetableFetcher(
                 t.startsWith("mawaqit:") -> TimetableSource.Mawaqit(t.removePrefix("mawaqit:"))
                 t.startsWith("csv:") -> TimetableSource.CsvUrl(t.removePrefix("csv:"))
                 t.startsWith("asset:") -> TimetableSource.BundledCsv(t.removePrefix("asset:"))
+                t.startsWith("table:") -> t.removePrefix("table:").split('|', limit = 2)
+                    .takeIf { it.size == 2 }?.let { TimetableSource.HtmlTable(it[1], it[0]) }
+                t.startsWith("widget:") -> TimetableSource.TodayWidget(t.removePrefix("widget:"))
                 t.startsWith("http") -> OnlineTimetableParsers.discoverLinks(t).firstOrNull()?.let { decode(it) }
                     ?: if (t.contains("csv", ignoreCase = true)) TimetableSource.CsvUrl(t)
                     else TimetableSource.DiscoverFromWebsite(t)
@@ -99,6 +111,8 @@ class TimetableFetcher(
             is TimetableSource.Mawaqit -> "mawaqit:${s.slug}"
             is TimetableSource.CsvUrl -> "csv:${s.url}"
             is TimetableSource.BundledCsv -> "asset:${s.assetPath}"
+            is TimetableSource.HtmlTable -> "table:${s.layout}|${s.url}"
+            is TimetableSource.TodayWidget -> "widget:${s.url}"
             is TimetableSource.DiscoverFromWebsite -> s.url
         }
 
@@ -108,6 +122,7 @@ class TimetableFetcher(
             source.startsWith("mawaqit:") -> "Mawaqit"
             source.startsWith("csv:") -> "CSV link"
             source.startsWith("asset:") -> "built-in timetable"
+            source.startsWith("table:") || source.startsWith("widget:") -> "mosque website"
             else -> "mosque website"
         }
     }

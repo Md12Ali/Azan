@@ -4,31 +4,33 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.padding
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccessTime
-import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.Explore
+import androidx.compose.material.icons.outlined.Mosque
 import androidx.compose.material.icons.outlined.Tune
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.md12ali.sakinah.ui.components.PatternBackground
+import com.md12ali.sakinah.ui.components.FloatingNavBar
+import com.md12ali.sakinah.ui.components.NavTab
 import com.md12ali.sakinah.ui.prayer.LocationScreen
 import com.md12ali.sakinah.ui.prayer.PrayerDashboardScreen
 import com.md12ali.sakinah.ui.prayer.PrayerViewModel
+import com.md12ali.sakinah.ui.qibla.QiblaScreen
 import com.md12ali.sakinah.ui.settings.AdhanSettingsScreen
 import com.md12ali.sakinah.ui.theme.SakinahTheme
 
@@ -40,18 +42,17 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private data class Tab(val route: String, val label: String, val icon: ImageVector)
-
 private val tabs = listOf(
-    Tab("prayer", "Prayer", Icons.Outlined.AccessTime),
-    Tab("location", "Mosque", Icons.Outlined.LocationOn),
-    Tab("settings", "Adhan", Icons.Outlined.Tune)
+    NavTab("prayer", "Prayer", Icons.Outlined.AccessTime),
+    NavTab("qibla", "Qibla", Icons.Outlined.Explore),
+    NavTab("location", "Mosque", Icons.Outlined.Mosque),
+    NavTab("settings", "Adhan", Icons.Outlined.Tune)
 )
 
 @Composable
 private fun AppRoot() {
     val nav = rememberNavController()
-    val vm: PrayerViewModel = viewModel()   // one shared ViewModel for all three screens
+    val vm: PrayerViewModel = viewModel()   // one shared ViewModel for all screens
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
 
@@ -61,25 +62,25 @@ private fun AppRoot() {
         restoreState = true
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                tabs.forEach { t ->
-                    NavigationBarItem(
-                        selected = route == t.route, onClick = { go(t.route) },
-                        icon = { Icon(t.icon, null) }, label = { Text(t.label) }
-                    )
-                }
-            }
+    // Light status-bar icons over the dark sky (Prayer) and Qibla screens, dark icons on light screens.
+    val view = androidx.compose.ui.platform.LocalView.current
+    val darkTheme = androidx.compose.foundation.isSystemInDarkTheme()
+    androidx.compose.runtime.SideEffect {
+        val window = (view.context as android.app.Activity).window
+        androidx.core.view.WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars =
+            !darkTheme && route != "prayer" && route != "qibla" && route != null
+    }
+
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        NavHost(
+            nav, startDestination = "prayer",
+            enterTransition = { fadeIn() }, exitTransition = { fadeOut() }
+        ) {
+            composable("prayer") { PrayerDashboardScreen(vm, onOpenLocation = { go("location") }, onOpenAdhanSettings = { go("settings") }) }
+            composable("qibla") { QiblaScreen(vm) }
+            composable("location") { LocationScreen(vm, onDone = { go("prayer") }) }
+            composable("settings") { AdhanSettingsScreen(vm) }
         }
-    ) { padding ->
-        PatternBackground(Modifier.padding(padding)) {
-            NavHost(nav, startDestination = "prayer") {
-                composable("prayer") { PrayerDashboardScreen(vm, onOpenLocation = { go("location") }, onOpenAdhanSettings = { go("settings") }) }
-                composable("location") { LocationScreen(vm, onDone = { go("prayer") }) }
-                composable("settings") { AdhanSettingsScreen(vm) }
-            }
-        }
+        FloatingNavBar(tabs, route, onSelect = { go(it) }, modifier = Modifier.align(Alignment.BottomCenter))
     }
 }

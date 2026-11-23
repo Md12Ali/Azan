@@ -24,6 +24,10 @@ sealed interface TimetableSource {
     data class DiscoverFromWebsite(val url: String) : TimetableSource
     /** CSV bundled in app/src/main/assets (typed from the mosque's monthly PDF). */
     data class BundledCsv(val assetPath: String) : TimetableSource
+    /** A web page with a dated month/year table; [layout] is a key of OnlineTimetableParsers.layouts. */
+    data class HtmlTable(val url: String, val layout: String) : TimetableSource
+    /** A web page with a "today" box (prayer name → begin → jamaat). */
+    data class TodayWidget(val url: String) : TimetableSource
 }
 
 /**
@@ -85,16 +89,30 @@ object Places {
                 TimetableSource.Masjidbox("luton-central-mosque"),
                 TimetableSource.BundledCsv("timetables/luton_central_mosque.csv")
             )),
-        mosque("London", "London Central Mosque", "146 Park Road, London NW8 7RG", 51.5291, -0.1626,
-            website = "https://www.iccuk.org"),
+        // London → East London Mosque: whole-year table with begin + jamaat times.
+        mosque("London", "East London Mosque", "82-92 Whitechapel Road, London E1 1JQ", 51.5176, -0.0652,
+            website = "https://www.eastlondonmosque.org.uk/", approx = false,
+            extra = listOf(
+                TimetableSource.HtmlTable("https://www.eastlondonmosque.org.uk/prayer-times", "elm"),
+                TimetableSource.TodayWidget("https://www.eastlondonmosque.org.uk/")
+            )),
+        // Birmingham Central Mosque: monthly table + today box on the home page.
         mosque("Birmingham", "Birmingham Central Mosque", "180 Belgrave Middleway, Birmingham B12 0XS", 52.4676, -1.8930,
-            website = "https://centralmosque.org.uk"),
+            website = "https://centralmosque.org.uk/", approx = false,
+            extra = listOf(
+                TimetableSource.HtmlTable("https://centralmosque.org.uk/timetable", "bcm"),
+                TimetableSource.TodayWidget("https://centralmosque.org.uk/")
+            )),
+        mosque("Leicester", "Leicester Central Mosque", "Conduit Street, Leicester LE2 0JN", 52.6290, -1.1220,
+            website = "https://www.islamiccentre.org/",
+            extra = listOf(TimetableSource.TodayWidget("https://www.islamiccentre.org/"))),
+        mosque("Manchester", "Manchester Central Mosque", "20 Upper Park Road, Victoria Park, Manchester M14 5RU", 53.457191, -2.220343,
+            website = "https://manchestercentralmosque.org/", approx = false,
+            extra = listOf(TimetableSource.TodayWidget("https://manchestercentralmosque.org/"))),
         mosque("Glasgow", "Glasgow Central Mosque", "1 Mosque Avenue, Glasgow G5 9TA", 55.8530, -4.2490,
-            website = "https://www.centralmosque.co.uk"),
-        mosque("Manchester", "Manchester Central Mosque", "Victoria Park, Manchester M14", 53.4560, -2.2210),
+            website = "https://centralmosque.co.uk/"),
         mosque("Bradford", "Bradford Grand Mosque", "Bradford BD8", 53.8000, -1.7700),
         mosque("Leeds", "Leeds Grand Mosque", "Leeds LS6", 53.8150, -1.5650),
-        mosque("Leicester", "Leicester Central Mosque", "Leicester LE2", 52.6230, -1.1150),
         mosque("Sheffield", "Sheffield Central Mosque", "Sheffield S3", 53.3880, -1.4800),
         mosque("Blackburn", "Blackburn Central Mosque", "Blackburn BB1", 53.7500, -2.4800),
         mosque("Bolton", "Bolton Central Mosque", "Bolton BL1", 53.5800, -2.4300),

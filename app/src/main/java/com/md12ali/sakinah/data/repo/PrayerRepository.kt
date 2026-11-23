@@ -43,7 +43,7 @@ class PrayerRepository(
     suspend fun activePlace(): ActivePlace = activePlace(settingsRepo.current())
 
     fun activePlace(s: AppSettings): ActivePlace {
-        val london = Places.mosqueById("london-central-mosque")!!
+        val london = Places.mosqueById("east-london-mosque")!!
         return when (s.mode) {
             LocationMode.MOSQUE -> {
                 val m = Places.mosqueById(s.mosqueId) ?: Places.mosques.first()
@@ -79,7 +79,7 @@ class PrayerRepository(
         val cachedAhead = dao.futureDays(mosque.id, today.toString())
         // Masjidbox gives 1 day per fetch, Mawaqit/CSV a whole year – refetch when < 2 days are cached.
         if (!force && cachedAhead >= 2) return s.mosqueSources[mosque.id]
-        val worked = fetcher.fetch(mosque, s.mosqueSources[mosque.id], today)
+        val worked = fetcher.fetch(mosque, s.mosqueSources[mosque.id], today, hanafiAsr = s.madhab == com.md12ali.sakinah.core.prayer.Madhab.HANAFI)
         if (worked != null && worked != s.mosqueSources[mosque.id]) settingsRepo.setMosqueSource(mosque.id, worked)
         return worked
     }

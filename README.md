@@ -1,4 +1,4 @@
-# Sakinah – Adhan & Prayer Times (Android)
+# Sakinah – Adhan, Prayer Times & Qibla (Android)
 
 A calm, 100% free Android app (Kotlin + Jetpack Compose) that plays the Adhan using the **published timetable of the nearest UK central mosque** to wherever you are. No ads, no paywall, no Google Play Services needed.
 
@@ -15,9 +15,10 @@ GPS fix ──► nearest central mosque (within 25 km) ──► that mosque's 
                      AlarmManager exact alarm ──► foreground media service plays the Adhan (screen locked OK)
 ```
 
-* **Auto (GPS)**, the default: in Luton it follows Luton Central Mosque's times. Drive to Birmingham and the next refresh (every 6 h, or tap ⟳) switches to Birmingham Central Mosque.
+* **Auto (GPS)**, the default: it follows the nearest city's central mosque, for example **East London Mosque** in London, **Birmingham Central Mosque**, Luton Central Mosque, and the central mosques of Leicester and Manchester. It switches automatically when you travel.
 * **Chosen mosque**: keep your home mosque's times while you're away.
 * **City**: plain calculation (Moonsighting Committee + Hanafi Asr by default, both changeable).
+* **Qibla compass**: works anywhere in the world, offline. It shows the direction and distance to the Kaaba, corrects magnetic north to true north, and vibrates and turns gold when you face the Qibla.
 * **Per-prayer alert**: Full Adhan / Soft Adhan (default for Fajr) / Gentle notification / Silent. Tap the bell icons on the dashboard.
 * **Adhan at jamaat time** (optional) when the mosque publishes jamaat times.
 
@@ -25,7 +26,11 @@ GPS fix ──► nearest central mosque (within 25 km) ──► that mosque's 
 UK mosques don't share one common feed, so each mosque has a list of sources, tried in this order (`core/location/Places.kt`):
 
 1. The source that worked last time (it's remembered).
-2. Known sources. Luton Central Mosque → `masjidbox.com/prayer-times/luton-central-mosque` (checked: the page shows begin and jamaat times).
+2. Known sources, checked against each mosque's live page:
+   * East London Mosque: whole-year table at `eastlondonmosque.org.uk/prayer-times`
+   * Birmingham Central Mosque: monthly table at `centralmosque.org.uk/timetable`, plus today's times on its home page
+   * Leicester (`islamiccentre.org`) and Manchester (`manchestercentralmosque.org`): "today" boxes on their home pages
+   * Luton Central Mosque: Masjidbox
 3. **Website discovery**: the app downloads the mosque's website and looks for Masjidbox, Mawaqit or CSV links.
 4. **Name guesses** on Masjidbox and Mawaqit (`birmingham-central-mosque` and so on).
 5. If none of these works, it calculates the times with UK-mosque offsets (+5 min Dhuhr, +3 min Maghrib).
