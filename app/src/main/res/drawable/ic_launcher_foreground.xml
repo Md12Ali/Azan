@@ -1,0 +1,9 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- crescent -->
+    <path android:fillColor="#C9A44C"
+        android:pathData="M60,32 A22,22 0 1,0 60,76 A17,17 0 1,1 60,32 Z" />
+    <!-- star -->
+    <path android:fillColor="#F7F2E8"
+        android:pathData="M68,46 L70,51 L75,51 L71,54 L72.5,59 L68,56 L63.5,59 L65,54 L61,51 L66,51 Z" />
+</vector>

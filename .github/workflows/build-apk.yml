@@ -1,0 +1,49 @@
+# Builds an installable APK on GitHub's servers every time you push to main
+# (or tap "Run workflow" in the Actions tab). The APK is attached to a GitHub Release
+# so you can download it straight onto your phone from the repo's "Releases" page.
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests (prayer-time engine & timetable parsers)
+        run: chmod +x gradlew && ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk Sakinah-Adhan-${{ github.run_number }}.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sakinah-Adhan-apk
+          path: Sakinah-Adhan-${{ github.run_number }}.apk
+
+      - name: Publish release with APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Sakinah Adhan – build ${{ github.run_number }}
+          body: Install on Android – allow "Install unknown apps" for your browser when asked.
+          files: Sakinah-Adhan-${{ github.run_number }}.apk

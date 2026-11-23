@@ -1,0 +1,7 @@
+# Luton Central Mosque – OFFLINE BACKUP timetable (optional).
+# The app normally downloads times automatically from masjidbox.com/prayer-times/luton-central-mosque.
+# To keep a full offline month, type rows from the mosque's monthly PDF (lutoncentralmosque.org/prayer-times/).
+# 12-hour times without am/pm are fine (e.g. 1:00 for Dhuhr jamaat).
+# Example row from the published page (23 Nov 2026):
+date,fajr,fajr_jamaat,sunrise,dhuhr,dhuhr_jamaat,asr,asr_jamaat,maghrib,maghrib_jamaat,isha,isha_jamaat
+2026-11-23,5:54,6:45,7:35,11:53,1:00,2:14,2:45,4:04,4:04,5:39,6:45
