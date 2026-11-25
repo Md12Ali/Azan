@@ -101,14 +101,16 @@ object AdhanAudio {
 
     /**
      * Turns the user's setting into something playable, best first:
-     * chosen file → bundled asset → downloaded real Adhan (Aaqib Azeez, then others) → null (alarm tone).
+     * chosen file → bundled asset → downloaded voice → built-in Azan (res/raw/azan.mp3).
+     * "" (the default) = built-in Azan.
      */
-    fun resolve(context: Context, setting: String, fajr: Boolean): String? {
+    const val BUILT_IN = "raw:azan"
+
+    fun resolve(context: Context, setting: String, fajr: Boolean): String {
+        if (setting.isBlank() || setting == BUILT_IN) return BUILT_IN
         if (setting.startsWith("/") && File(setting).exists()) return setting
         if (setting.isNotBlank() && !setting.startsWith("/") &&
             runCatching { context.assets.openFd(setting).close(); true }.getOrDefault(false)) return "asset:$setting"
-        val have = downloaded(context)
-        val preferred = if (fajr) listOf("aaqib_azeez", "beautiful", "short") else listOf("aaqib_azeez", "beautiful", "short")
-        return preferred.firstNotNullOfOrNull { id -> have.firstOrNull { it.first.id == id }?.second?.absolutePath }
+        return BUILT_IN
     }
 }

@@ -47,6 +47,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -87,13 +89,30 @@ fun AdhanSettingsScreen(vm: PrayerViewModel) {
             .padding(horizontal = 16.dp).padding(top = 12.dp, bottom = 120.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("Adhan", style = MaterialTheme.typography.headlineMedium)
-        Text("Choose how each prayer is announced", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
+        Text("Azan", style = MaterialTheme.typography.headlineMedium)
+        Text("Fajr, Dhuhr, Asr, Maghrib and Isha – the Azan plays at the exact time, anywhere in the world",
+            style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
 
-        AdhanHealthCheck(onDownloadAdhan = { vm.downloadAdhan(); sounds = AdhanPlaybackService.availableSounds(context) })
+        // ---- Azan style: the clear choice the user asked for ----
+        SoftCard {
+            CardTitle(Icons.Outlined.NotificationsActive, "How the Azan comes")
+            StyleOption(
+                selected = !s.settings.fullScreenAdhan,
+                title = "Notification + Azan (recommended)",
+                body = "At every prayer time a notification appears and the Azan plays. No alarm, no alarm icon."
+            ) { vm.setFullScreenAdhan(false) }
+            HorizontalDivider(Modifier.padding(vertical = 8.dp), color = cs.outlineVariant)
+            StyleOption(
+                selected = s.settings.fullScreenAdhan,
+                title = "Full-screen Azan",
+                body = "Also shows a large Azan screen over the lock screen while it plays."
+            ) { vm.setFullScreenAdhan(true) }
+        }
+
+        AdhanHealthCheck(fullScreen = s.settings.fullScreenAdhan)
 
         SoftCard {
-            CardTitle(Icons.Outlined.Alarm, "Alert for each prayer")
+            CardTitle(Icons.Outlined.Alarm, "Each prayer")
             Prayer.adhanPrayers.forEachIndexed { i, p ->
                 if (i > 0) HorizontalDivider(Modifier.padding(vertical = 10.dp), color = cs.outlineVariant)
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -116,17 +135,17 @@ fun AdhanSettingsScreen(vm: PrayerViewModel) {
         }
 
         SoftCard {
-            CardTitle(Icons.Outlined.MusicNote, "Adhan sound")
-            Text("Real Adhan recordings download automatically (once) and then work offline. You can also use your own MP3.",
+            CardTitle(Icons.Outlined.MusicNote, "Azan voice")
+            Text("The built-in Azan is used for all five prayers and works offline. You can choose a different voice if you like.",
                 style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
             SoundPicker("Fajr (calm)", s.settings.fajrSound, sounds, vm::setFajrSound) { AdhanPlaybackService.preview(context, Prayer.FAJR, it) }
             FilledTonalButton(onClick = { pickFor = "fajr"; picker.launch(arrayOf("audio/*")) }, shape = RoundedCornerShape(50)) {
-                Icon(Icons.Outlined.LibraryMusic, null); Spacer(Modifier.width(6.dp)); Text("Choose Fajr Adhan from phone")
+                Icon(Icons.Outlined.LibraryMusic, null); Spacer(Modifier.width(6.dp)); Text("Use my own Fajr Azan")
             }
             HorizontalDivider(Modifier.padding(vertical = 8.dp), color = cs.outlineVariant)
             SoundPicker("Dhuhr · Asr · Maghrib · Isha", s.settings.mainSound, sounds, vm::setMainSound) { AdhanPlaybackService.preview(context, Prayer.DHUHR, it) }
             FilledTonalButton(onClick = { pickFor = "main"; picker.launch(arrayOf("audio/*")) }, shape = RoundedCornerShape(50)) {
-                Icon(Icons.Outlined.LibraryMusic, null); Spacer(Modifier.width(6.dp)); Text("Choose Adhan from phone")
+                Icon(Icons.Outlined.LibraryMusic, null); Spacer(Modifier.width(6.dp)); Text("Use my own Azan")
             }
             Spacer(Modifier.padding(4.dp))
             OutlinedButton(onClick = { AdhanPlaybackService.stop(context) }, shape = RoundedCornerShape(50)) {
@@ -136,9 +155,9 @@ fun AdhanSettingsScreen(vm: PrayerViewModel) {
 
         SoftCard {
             CardTitle(Icons.Outlined.Tune, "Behaviour")
-            ToggleRow("Use alarm volume", "Plays even when media volume is muted.", s.settings.useAlarmVolume, vm::setUseAlarmVolume)
+            ToggleRow("Play even on silent", "Uses the alarm volume so the Azan is heard when the phone is on silent. Turn off to use media volume.", s.settings.useAlarmVolume, vm::setUseAlarmVolume)
             HorizontalDivider(Modifier.padding(vertical = 10.dp), color = cs.outlineVariant)
-            ToggleRow("Adhan at jamaat time", "Alert at the mosque's jamaat time instead of the start time.", s.settings.alertAtJamaat, vm::setAlertAtJamaat)
+            ToggleRow("Azan at jamaat time", "Alert at the mosque's jamaat time instead of the start time.", s.settings.alertAtJamaat, vm::setAlertAtJamaat)
         }
 
         SoftCard {
@@ -163,12 +182,14 @@ fun AdhanSettingsScreen(vm: PrayerViewModel) {
         }
 
         SoftCard {
-            CardTitle(Icons.Outlined.MusicNote, "About the Adhan recordings")
+            CardTitle(Icons.Outlined.MusicNote, "More Azan voices (optional)")
+            Text("Download extra freely licensed voices from Wikimedia Commons (about 5 MB):",
+                style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant, modifier = Modifier.padding(bottom = 6.dp))
             com.md12ali.sakinah.audio.AdhanAudio.catalog.forEach { r ->
                 Text("${r.title} – ${r.credit} (${r.license})", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 4.dp))
             }
-            Text("Recordings from Wikimedia Commons, used under their free licences.", style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+            FilledTonalButton(onClick = { vm.downloadAdhan() }, shape = RoundedCornerShape(50)) { Text("Download extra voices") }
         }
 
         SoftCard {
@@ -186,6 +207,20 @@ fun AdhanSettingsScreen(vm: PrayerViewModel) {
                     }, shape = RoundedCornerShape(50)) { Text("Exact alarms") }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun StyleOption(selected: Boolean, title: String, body: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onClick).padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        androidx.compose.material3.RadioButton(selected = selected, onClick = onClick)
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

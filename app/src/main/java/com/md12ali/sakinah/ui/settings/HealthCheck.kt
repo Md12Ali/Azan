@@ -60,14 +60,14 @@ private data class Check(val ok: Boolean, val title: String, val detail: String,
  * Re-checks whenever you come back to the app (e.g. after changing a system setting).
  */
 @Composable
-fun AdhanHealthCheck(onDownloadAdhan: () -> Unit) {
+fun AdhanHealthCheck(fullScreen: Boolean) {
     val context = LocalContext.current
     var tick by remember { mutableIntStateOf(0) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { tick++ }
     LaunchedEffect(Unit) { while (true) { delay(3000); tick++ } }   // refresh after downloads / tests
     var showLog by remember { mutableStateOf(false) }
 
-    val checks = remember(tick) { runChecks(context, onDownloadAdhan) }
+    val checks = remember(tick, fullScreen) { runChecks(context, fullScreen) }
     val allOk = checks.all { it.ok }
     val cs = MaterialTheme.colorScheme
 
@@ -77,8 +77,8 @@ fun AdhanHealthCheck(onDownloadAdhan: () -> Unit) {
                 if (allOk) cs.primaryContainer else cs.errorContainer, 36.dp)
             Spacer(Modifier.width(10.dp))
             Column {
-                Text("Adhan health check", style = MaterialTheme.typography.titleMedium)
-                Text(if (allOk) "Everything is ready – the Adhan will play on time." else "${checks.count { !it.ok }} thing(s) can stop the Adhan – tap Fix",
+                Text("Azan health check", style = MaterialTheme.typography.titleMedium)
+                Text(if (allOk) "Everything is ready – the Azan will play on time." else "${checks.count { !it.ok }} thing(s) can stop the Azan – tap Fix",
                     style = MaterialTheme.typography.bodySmall, color = if (allOk) cs.primary else cs.error)
             }
         }
@@ -98,10 +98,10 @@ fun AdhanHealthCheck(onDownloadAdhan: () -> Unit) {
         Spacer(Modifier.padding(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             Button(onClick = { AdhanPlaybackService.preview(context, Prayer.DHUHR, "") }, shape = RoundedCornerShape(50)) { Text("Play now") }
-            OutlinedButton(onClick = { AdhanScheduler.scheduleTest(context); tick++ }, shape = RoundedCornerShape(50)) { Text("Test in 1 min") }
+            OutlinedButton(onClick = { AdhanScheduler.scheduleTest(context, fullScreen = fullScreen); tick++ }, shape = RoundedCornerShape(50)) { Text("Test in 1 min") }
             TextButton(onClick = { AdhanPlaybackService.stop(context) }) { Text("Stop") }
         }
-        Text("“Test in 1 min” is a real alarm: lock the phone and wait – the Adhan screen and sound should appear.",
+        Text("“Test in 1 min” works exactly like a real prayer time: lock the phone and wait – a notification appears and the Azan plays.",
             style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
         TextButton(onClick = { showLog = !showLog }) { Text(if (showLog) "Hide what happened" else "Show what happened (log)") }
         if (showLog) {
@@ -113,7 +113,7 @@ fun AdhanHealthCheck(onDownloadAdhan: () -> Unit) {
 }
 
 @SuppressLint("BatteryLife")
-private fun runChecks(context: Context, onDownloadAdhan: () -> Unit): List<Check> {
+private fun runChecks(context: Context, fullScreen: Boolean): List<Check> {
     val list = mutableListOf<Check>()
     val pkg = context.packageName
     fun open(intent: Intent) = runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
@@ -121,25 +121,25 @@ private fun runChecks(context: Context, onDownloadAdhan: () -> Unit): List<Check
 
     // 1. Next Adhan scheduled
     val next = AdhanLog.next(context)
-    list += Check(next != null, "Next Adhan scheduled", next ?: "Open the Prayer tab once so the alarms are set",
+    list += Check(next != null, "Next Azan scheduled", next ?: "Open the Prayer tab once so the prayer times are set",
         null, null)
 
     // 2. Exact alarms
     val exact = AdhanScheduler.canScheduleExact(context)
-    list += Check(exact, "Exact alarms allowed", if (exact) "Adhan fires at the exact minute" else "Android may delay the Adhan",
+    list += Check(exact, "On-time permission", if (exact) "Azan plays at the exact minute" else "Android may delay the Azan",
         "Allow") {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) open(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$pkg")))
     }
 
     // 3. Notifications (needed for the Adhan screen + Stop button)
     val notif = NotificationManagerCompat.from(context).areNotificationsEnabled()
-    list += Check(notif, "Notifications on", if (notif) "Adhan screen and Stop button can show" else "Turn on so the Adhan can show and play",
+    list += Check(notif, "Notifications on", if (notif) "Prayer notification and Stop button can show" else "Turn on so the Azan notification can show",
         "Turn on") {
         open(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, pkg))
     }
 
     // 4. Full-screen Adhan over lock screen (Android 14+ can switch this off)
-    if (Build.VERSION.SDK_INT >= 34) {
+    if (fullScreen && Build.VERSION.SDK_INT >= 34) {
         val fsi = context.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
         list += Check(fsi, "Adhan screen on lock screen", if (fsi) "Shows like an alarm clock" else "Allow full-screen alerts", "Allow") {
             open(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:$pkg")))
@@ -150,7 +150,7 @@ private fun runChecks(context: Context, onDownloadAdhan: () -> Unit): List<Check
     val pm = context.getSystemService(PowerManager::class.java)
     val unrestricted = pm.isIgnoringBatteryOptimizations(pkg)
     list += Check(unrestricted, "Battery: unrestricted",
-        if (unrestricted) "The phone won't put Azan to sleep" else "Your phone may block the Adhan to save battery" + makerTip(),
+        if (unrestricted) "The phone won't put Azan to sleep" else "Your phone may block the Azan to save battery" + makerTip(),
         "Allow") {
         open(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$pkg")))
     }
@@ -159,15 +159,10 @@ private fun runChecks(context: Context, onDownloadAdhan: () -> Unit): List<Check
     val am = context.getSystemService(AudioManager::class.java)
     val vol = am.getStreamVolume(AudioManager.STREAM_ALARM)
     val max = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-    list += Check(vol * 100 / max.coerceAtLeast(1) >= 30, "Alarm volume", "Currently ${vol * 100 / max.coerceAtLeast(1)}% – the Adhan uses alarm volume",
+    list += Check(vol * 100 / max.coerceAtLeast(1) >= 30, "Azan volume", "Currently ${vol * 100 / max.coerceAtLeast(1)}% (the Azan uses the phone's alarm volume so it plays even on silent)",
         "Raise") {
         runCatching { am.setStreamVolume(AudioManager.STREAM_ALARM, (max * 0.75).toInt(), AudioManager.FLAG_SHOW_UI) }
     }
-
-    // 7. Real Adhan recording available
-    val have = AdhanAudio.downloaded(context).size
-    list += Check(have > 0, "Real Adhan recording", if (have > 0) "$have recordings saved on the phone (work offline)" else "Not downloaded yet – needs internet once",
-        "Download") { onDownloadAdhan() }
 
     return list
 }

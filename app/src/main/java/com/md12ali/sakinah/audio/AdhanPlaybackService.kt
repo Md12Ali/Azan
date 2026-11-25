@@ -9,7 +9,6 @@ import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
-import android.media.RingtoneManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -33,9 +32,9 @@ import java.io.File
 /**
  * Foreground media service that plays the Adhan with the screen locked.
  *  1. startForeground() FIRST (Android kills the app if this is late)
- *  2. full-screen Adhan screen over the lock screen (like an alarm clock) with a big Stop button
- *  3. real Adhan recording (chosen file → downloaded Wikimedia recording → phone alarm tone)
- *  4. alarm audio stream, gentle fade-in, stops on call / Stop / end of recording
+ *  2. notification with Stop (optional full-screen Azan screen if the user turned it on)
+ *  3. the built-in Azan (res/raw/azan.mp3) – or a voice the user picked
+ *  4. gentle fade-in, stops on call / Stop / end of the Azan – never an alarm tone
  * Every step is written to AdhanLog for the in-app health check.
  */
 class AdhanPlaybackService : Service() {
@@ -55,23 +54,24 @@ class AdhanPlaybackService : Service() {
         val mode = intent?.getStringExtra(AdhanScheduler.EXTRA_MODE)?.let { runCatching { AlertMode.valueOf(it) }.getOrNull() }
         val preview = intent?.getBooleanExtra(EXTRA_PREVIEW, false) == true
         val previewFile = intent?.getStringExtra(EXTRA_FILE)
+        val fullScreen = !preview && intent?.getBooleanExtra(AdhanScheduler.EXTRA_FULLSCREEN, false) == true
 
         // 1) Foreground immediately.
         try {
             ServiceCompat.startForeground(
-                this, NOTIFICATION_ID, buildNotification(prayer, time, place, fullScreen = !preview),
+                this, NOTIFICATION_ID, buildNotification(prayer, time, place, fullScreen = fullScreen),
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK else 0
             )
         } catch (e: Exception) {
-            AdhanLog.add(this, "startForeground failed: ${e.javaClass.simpleName} – used alarm notification")
+            AdhanLog.add(this, "startForeground failed: ${e.javaClass.simpleName} – Azan played as notification sound")
             Notifications.showFallbackAlarm(this, prayer, time, place)
             stopSelf()
             return START_NOT_STICKY
         }
         _playing.value = Playing(prayer, time, place)
 
-        // 2) Lock-screen Adhan screen (also launched by the notification's full-screen intent).
-        if (!preview) runCatching {
+        // 2) Optional full-screen Azan screen (off by default – the user asked for notification + Azan only).
+        if (fullScreen) runCatching {
             startActivity(AdhanActivity.intent(this, prayer, time, place).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
 
@@ -83,11 +83,11 @@ class AdhanPlaybackService : Service() {
         val source = AdhanAudio.resolve(this, setting, isFajr)
         val alarmStream = (settings?.useAlarmVolume ?: true) && !preview
         play(source, alarmStream, targetVolume = if (soft || isFajr) 0.7f else 1.0f)
-        AdhanLog.add(this, "Playing ${prayer.english}: ${source?.substringAfterLast('/') ?: "phone alarm tone (no Adhan downloaded yet)"}")
+        AdhanLog.add(this, "Playing Azan for ${prayer.english}: ${if (source == AdhanAudio.BUILT_IN) "built-in Azan" else source.substringAfterLast('/')}")
         return START_NOT_STICKY
     }
 
-    private fun play(source: String?, alarmStream: Boolean, targetVolume: Float) {
+    private fun play(source: String, alarmStream: Boolean, targetVolume: Float) {
         stopPlayer()
         val attrs = AudioAttributes.Builder()
             .setUsage(if (alarmStream) AudioAttributes.USAGE_ALARM else AudioAttributes.USAGE_MEDIA)
@@ -104,7 +104,7 @@ class AdhanPlaybackService : Service() {
         val mp = MediaPlayer()
         val ok = runCatching {
             when {
-                source == null -> error("no recording")
+                source == AdhanAudio.BUILT_IN -> mp.setDataSource(this, builtInUri(this))
                 source.startsWith("asset:") -> assets.openFd(source.removePrefix("asset:")).use { afd ->
                     mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
                 }
@@ -112,10 +112,8 @@ class AdhanPlaybackService : Service() {
             }
         }.isSuccess
         if (!ok) {
-            val fallback = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-            runCatching { mp.reset(); mp.setDataSource(this, fallback) }
+            // The chosen file is missing → always fall back to the built-in Azan (never an alarm tone).
+            runCatching { mp.reset(); mp.setDataSource(this, builtInUri(this)) }
         }
         mp.setAudioAttributes(attrs)
         mp.setWakeMode(this, PowerManager.PARTIAL_WAKE_LOCK)
@@ -123,7 +121,7 @@ class AdhanPlaybackService : Service() {
         mp.setOnPreparedListener { it.start(); fadeIn(it, targetVolume) }
         mp.setOnCompletionListener { stopAll() }
         mp.setOnErrorListener { _, what, extra ->
-            AdhanLog.add(this, "Player error $what/$extra – used alarm notification")
+            AdhanLog.add(this, "Player error $what/$extra – Azan played as notification sound")
             Notifications.showFallbackAlarm(this, _playing.value?.prayer ?: Prayer.DHUHR, _playing.value?.time.orEmpty(), _playing.value?.place.orEmpty())
             stopAll(); true
         }
@@ -149,13 +147,14 @@ class AdhanPlaybackService : Service() {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("${prayer.english} · ${prayer.arabic}")
             .setContentText(listOf(time, place).filter { it.isNotBlank() }.joinToString(" · ").ifBlank { "Adhan" })
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(if (fullScreen) NotificationCompat.CATEGORY_ALARM else NotificationCompat.CATEGORY_REMINDER)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setSubText("Azan")
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
             .setContentIntent(activityIntent(prayer, time, place))
             .apply { if (fullScreen) setFullScreenIntent(activityIntent(prayer, time, place), true) }
-            .addAction(0, "Stop Adhan", stopIntent(this))
+            .addAction(0, "Stop Azan", stopIntent(this))
             .setDeleteIntent(stopIntent(this))
             .build()
 
@@ -190,6 +189,9 @@ class AdhanPlaybackService : Service() {
         const val EXTRA_FILE = "file"
         private const val NOTIFICATION_ID = 1001
 
+        fun builtInUri(context: Context): android.net.Uri =
+            android.net.Uri.parse("android.resource://${context.packageName}/${R.raw.azan}")
+
         private val _playing = MutableStateFlow<Playing?>(null)
         /** Observed by the lock-screen Adhan screen so it closes when the Adhan ends. */
         val playing: StateFlow<Playing?> = _playing
@@ -223,7 +225,7 @@ class AdhanPlaybackService : Service() {
 
         /** Friendly name for a sound path. */
         fun label(context: Context, path: String): String {
-            if (path.isBlank()) return "Automatic (best real Adhan)"
+            if (path.isBlank() || path == AdhanAudio.BUILT_IN) return "Built-in Azan (default)"
             AdhanAudio.catalog.firstOrNull { AdhanAudio.fileFor(context, it).absolutePath == path }?.let { return it.title }
             return File(path).name
         }

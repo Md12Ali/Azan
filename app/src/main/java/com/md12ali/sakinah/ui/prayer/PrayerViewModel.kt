@@ -158,6 +158,7 @@ class PrayerViewModel(app: Application) : AndroidViewModel(app) {
     fun setMethod(m: CalculationMethod?) = viewModelScope.launch { c.settings.setMethod(m); reload() }
     fun setMadhab(m: Madhab?) = viewModelScope.launch { c.settings.setMadhab(m); refresh(forceDownload = true) }
     fun setAlertAtJamaat(v: Boolean) = viewModelScope.launch { c.settings.setAlertAtJamaat(v); reload() }
+    fun setFullScreenAdhan(v: Boolean) = viewModelScope.launch { c.settings.setFullScreenAdhan(v); reload() }
     fun setUseAlarmVolume(v: Boolean) = viewModelScope.launch { c.settings.setUseAlarmVolume(v) }
     fun setFajrSound(p: String) = viewModelScope.launch { c.settings.setFajrSound(p) }
     fun setMainSound(p: String) = viewModelScope.launch { c.settings.setMainSound(p) }

@@ -17,22 +17,23 @@ import com.md12ali.sakinah.ui.MainActivity
 object Notifications {
     const val CH_ADHAN = "adhan_playback"   // silent channel – the service itself plays the Adhan
     const val CH_GENTLE = "prayer_gentle"   // default soft notification sound
-    const val CH_FALLBACK = "adhan_fallback" // loud alarm-sound notification if the player can't start
+    const val CH_FALLBACK = "azan_sound_v2"  // notification whose sound IS the Azan (backup if the player can't start)
 
     fun createChannels(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CH_ADHAN, "Adhan", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "Shown while the Adhan is playing"
+        nm.createNotificationChannel(NotificationChannel(CH_ADHAN, "Azan", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Shown while the Azan is playing"
             setSound(null, null)
             enableVibration(false)
         })
-        nm.createNotificationChannel(NotificationChannel(CH_FALLBACK, "Prayer alarm", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "Used if the Adhan player can't start"
+        runCatching { nm.deleteNotificationChannel("adhan_fallback") }   // old alarm-tone channel
+        nm.createNotificationChannel(NotificationChannel(CH_FALLBACK, "Azan (backup)", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Plays the Azan as the notification sound if the Azan player can't start"
             setSound(
-                android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM),
-                android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_ALARM).build()
+                android.net.Uri.parse("android.resource://${context.packageName}/${R.raw.azan}"),
+                android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC).build()
             )
-            enableVibration(true)
         })
         nm.createNotificationChannel(NotificationChannel(CH_GENTLE, "Gentle prayer reminders", NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = "Soft notification at prayer time (no Adhan)"

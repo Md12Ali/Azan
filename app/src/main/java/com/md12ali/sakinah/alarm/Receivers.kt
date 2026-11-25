@@ -35,11 +35,12 @@ class AdhanAlarmReceiver : BroadcastReceiver() {
                     .putExtra(AdhanScheduler.EXTRA_TIME, time)
                     .putExtra(AdhanScheduler.EXTRA_PLACE, place)
                     .putExtra(AdhanScheduler.EXTRA_MODE, mode.name)
+                    .putExtra(AdhanScheduler.EXTRA_FULLSCREEN, intent.getBooleanExtra(AdhanScheduler.EXTRA_FULLSCREEN, false))
                 try {
                     ContextCompat.startForegroundService(context, svc)
                 } catch (e: Exception) {
                     // Never stay silent: ring the loud alarm notification instead.
-                    AdhanLog.add(context, "Player could not start: ${e.javaClass.simpleName} – used alarm notification")
+                    AdhanLog.add(context, "Player could not start: ${e.javaClass.simpleName} – Azan played as notification sound")
                     Notifications.showFallbackAlarm(context, prayer, time, place)
                 }
             }

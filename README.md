@@ -1,4 +1,6 @@
-# Azan – Adhan, Prayer Times & Qibla (Android)
+# Azan – Prayer Times, Azan & Qibla (Android)
+
+**At every Fajr, Dhuhr, Asr, Maghrib and Isha the phone shows a notification and plays the Azan, at the exact local time, anywhere in the world.** It's not an alarm: no alarm tone, no alarm icon. The built-in Azan (`app/src/main/res/raw/azan.mp3`) is used for all five prayers and works offline. You can optionally turn on a full-screen Azan screen (**Azan tab → How the Azan comes**).
 
 A calm, 100% free Android app (Kotlin + Jetpack Compose) that plays the Adhan using the **published timetable of the nearest UK central mosque** to wherever you are. No ads, no paywall, no Google Play Services needed.
 

@@ -26,7 +26,7 @@ class DailyRefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 }
             }
         }
-        runCatching { com.md12ali.sakinah.audio.AdhanAudio.ensureDownloaded(applicationContext) }
+
         runCatching { c.prayerRepository.refreshTimetableIfNeeded() }
         AdhanScheduler.rescheduleAll(applicationContext)
         return Result.success()

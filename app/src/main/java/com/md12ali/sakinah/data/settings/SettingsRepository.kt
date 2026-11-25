@@ -25,10 +25,10 @@ private val Context.dataStore by preferencesDataStore(name = "settings")
 enum class LocationMode { AUTO_GPS, MOSQUE, CITY_CALC }
 
 enum class AlertMode(val label: String) {
-    ADHAN("Full Adhan"),
-    SOFT_ADHAN("Soft Adhan"),
-    GENTLE("Gentle notification"),
-    SILENT("Silent")
+    ADHAN("Azan"),
+    SOFT_ADHAN("Soft Azan"),
+    GENTLE("Notification only"),
+    SILENT("Off")
 }
 
 data class AppSettings(
@@ -56,6 +56,8 @@ data class AppSettings(
     val useAlarmVolume: Boolean = true,
     /** Adhan at the mosque's jamaat time instead of the begin time (only when the mosque publishes jamaat). */
     val alertAtJamaat: Boolean = false,
+    /** false (default) = notification + Azan sound only. true = full-screen Azan screen like an alarm clock. */
+    val fullScreenAdhan: Boolean = false,
     /** mosqueId → "masjidbox:slug" | "mawaqit:slug" | "csv:https://…" – set by the user or remembered after discovery. */
     val mosqueSources: Map<String, String> = emptyMap(),
     val onboardingDone: Boolean = false
@@ -99,6 +101,7 @@ class SettingsRepository(private val context: Context) {
         val mainSound = stringPreferencesKey("main_sound")
         val alarmVol = booleanPreferencesKey("alarm_volume")
         val atJamaat = booleanPreferencesKey("at_jamaat")
+        val fullScreen = booleanPreferencesKey("full_screen_adhan")
         val sources = stringPreferencesKey("mosque_sources")   // "id=src\nid=src"
         val onboarding = booleanPreferencesKey("onboarding_done")
         val autoMethod = booleanPreferencesKey("auto_method")
@@ -133,6 +136,7 @@ class SettingsRepository(private val context: Context) {
             mainSound = this[K.mainSound] ?: d.mainSound,
             useAlarmVolume = this[K.alarmVol] ?: d.useAlarmVolume,
             alertAtJamaat = this[K.atJamaat] ?: false,
+            fullScreenAdhan = this[K.fullScreen] ?: false,
             mosqueSources = this[K.sources].orEmpty().lines().filter { '=' in it }
                 .associate { it.substringBefore('=') to it.substringAfter('=') },
             onboardingDone = this[K.onboarding] ?: false
@@ -163,6 +167,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun setMainSound(path: String) = context.dataStore.edit { it[K.mainSound] = path }
     suspend fun setUseAlarmVolume(v: Boolean) = context.dataStore.edit { it[K.alarmVol] = v }
     suspend fun setAlertAtJamaat(v: Boolean) = context.dataStore.edit { it[K.atJamaat] = v }
+    suspend fun setFullScreenAdhan(v: Boolean) = context.dataStore.edit { it[K.fullScreen] = v }
     suspend fun setOnboardingDone() = context.dataStore.edit { it[K.onboarding] = true }
 
     suspend fun setMosqueSource(mosqueId: String, source: String?) = context.dataStore.edit { prefs ->
