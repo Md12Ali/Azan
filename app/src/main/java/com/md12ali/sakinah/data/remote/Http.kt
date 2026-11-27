@@ -41,4 +41,23 @@ object Http {
             } finally { conn.disconnect() }
         }.getOrNull()
     }
+
+    /** Follows redirects (e.g. maps.app.goo.gl short links) and returns every URL visited, last = final. */
+    suspend fun redirectChain(url: String, maxHops: Int = 8): List<String> = withContext(Dispatchers.IO) {
+        val chain = mutableListOf(url)
+        var current = url
+        repeat(maxHops) {
+            val next = runCatching {
+                val c = (URL(current).openConnection() as HttpURLConnection).apply {
+                    instanceFollowRedirects = false; connectTimeout = 10_000; readTimeout = 10_000
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36")
+                }
+                try {
+                    if (c.responseCode in 300..399) c.getHeaderField("Location")?.let { URL(URL(current), it).toString() } else null
+                } finally { c.disconnect() }
+            }.getOrNull() ?: return@withContext chain
+            chain += next; current = next
+        }
+        chain
+    }
 }

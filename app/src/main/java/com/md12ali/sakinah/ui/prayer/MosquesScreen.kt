@@ -23,7 +23,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AddLocationAlt
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.Directions
 import androidx.compose.material.icons.outlined.Mosque
 import androidx.compose.material.icons.outlined.MyLocation
@@ -40,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -69,10 +73,17 @@ fun MosquesScreen(vm: PrayerViewModel) {
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { vm.findNearby(force = true) }
 
     LaunchedEffect(Unit) { if (!ui.searched) vm.findNearby() }
+    var showAdd by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val openGoogleMaps = {
+        val lat = ui.latitude; val lon = ui.longitude
+        val uri = if (lat != null && lon != null) Uri.parse("geo:$lat,$lon?q=mosque") else Uri.parse("geo:0,0?q=mosque+near+me")
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+        Unit
+    }
 
     val followingId = when (s.settings.mode) {
-        LocationMode.MOSQUE -> s.settings.mosqueId?.let { if (it.startsWith("osm_") || it.startsWith("mawaqit_")) it else "central_$it" }
-        LocationMode.AUTO_GPS -> s.place?.mosque?.id?.let { if (it.startsWith("osm_") || it.startsWith("mawaqit_")) it else "central_$it" }
+        LocationMode.MOSQUE -> s.settings.mosqueId?.let { if (NearbyMosque.isFound(it)) it else "central_$it" }
+        LocationMode.AUTO_GPS -> s.place?.mosque?.id?.let { if (NearbyMosque.isFound(it)) it else "central_$it" }
         else -> null
     }
 
@@ -90,6 +101,20 @@ fun MosquesScreen(vm: PrayerViewModel) {
                 IconButton(onClick = {
                     launcher.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
                 }) { Icon(Icons.Outlined.Refresh, "Search again", tint = cs.primary) }
+            }
+            ui.accuracyM?.let {
+                Text("Your location: accurate to about $it m", style = MaterialTheme.typography.labelMedium,
+                    color = if (it <= 100) cs.primary else cs.error)
+            }
+            Spacer(Modifier.height(10.dp))
+            // Google Maps knows the most mosques – two one-tap ways to use it.
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { showAdd = true }, shape = RoundedCornerShape(50)) {
+                    Icon(Icons.Outlined.AddLocationAlt, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Add from Google Maps")
+                }
+                OutlinedButton(onClick = openGoogleMaps, shape = RoundedCornerShape(50)) {
+                    Icon(Icons.Outlined.Map, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Open map")
+                }
             }
             Spacer(Modifier.height(10.dp))
             SoftCard(selected = s.settings.mode == LocationMode.AUTO_GPS && s.settings.followNearestMosque) {
@@ -132,6 +157,7 @@ fun MosquesScreen(vm: PrayerViewModel) {
                 m = m,
                 following = m.id == followingId,
                 onFollow = { vm.followMosque(m) },
+                onRemove = if (m.source == "mine") ({ vm.removeMyMosque(m); Unit }) else null,
                 onDirections = {
                     val uri = Uri.parse("geo:0,0?q=${m.latitude},${m.longitude}(${Uri.encode(m.name)})")
                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
@@ -140,15 +166,42 @@ fun MosquesScreen(vm: PrayerViewModel) {
         }
 
         if (ui.mosques.isNotEmpty()) item {
-            Text("Mosque data © OpenStreetMap contributors (ODbL) and Mawaqit. Timetables are the mosques' own.",
+            Text("Mosque data: Google Maps (via your phone), © OpenStreetMap contributors (ODbL) and Mawaqit. Timetables are the mosques' own.",
                 style = MaterialTheme.typography.labelSmall, color = cs.onSurfaceVariant,
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp), textAlign = TextAlign.Center)
         }
     }
+    if (showAdd) AddFromGoogleMapsDialog(onDismiss = { showAdd = false }, onAdd = { vm.addMosqueFromGoogleMaps(it) }, onOpenMaps = openGoogleMaps)
 }
 
 @Composable
-private fun MosqueCard(m: NearbyMosque, following: Boolean, onFollow: () -> Unit, onDirections: () -> Unit) {
+private fun AddFromGoogleMapsDialog(onDismiss: () -> Unit, onAdd: (String) -> Unit, onOpenMaps: () -> Unit) {
+    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+    var text by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add your mosque from Google Maps") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("1. Tap Open map and find your mosque.\n2. Open it and tap Share.\n3. Choose Azan in the share list – or Copy link and paste it below.",
+                    style = MaterialTheme.typography.bodySmall)
+                androidx.compose.material3.OutlinedTextField(
+                    text, { text = it }, Modifier.fillMaxWidth(), singleLine = false, maxLines = 3,
+                    placeholder = { Text("https://maps.app.goo.gl/…") }, shape = RoundedCornerShape(16.dp)
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    androidx.compose.material3.TextButton(onClick = { clipboard.getText()?.text?.let { text = it } }) { Text("Paste") }
+                    androidx.compose.material3.TextButton(onClick = onOpenMaps) { Text("Open map") }
+                }
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { onAdd(text); onDismiss() }, enabled = text.isNotBlank()) { Text("Add & use for Azan") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun MosqueCard(m: NearbyMosque, following: Boolean, onFollow: () -> Unit, onRemove: (() -> Unit)?, onDirections: () -> Unit) {
     val cs = MaterialTheme.colorScheme
     SoftCard(selected = following) {
         Row(verticalAlignment = Alignment.Top) {
@@ -168,6 +221,10 @@ private fun MosqueCard(m: NearbyMosque, following: Boolean, onFollow: () -> Unit
                             Pill("Own timetable", container = cs.primary, content = cs.onPrimary)
                         m.website != null -> Pill("Website – checking timetable")
                         else -> Pill("Calculated times", container = cs.surfaceVariant, content = cs.onSurfaceVariant)
+                    }
+                    when (m.source) {
+                        "google" -> Pill("Google Maps", container = cs.surfaceVariant, content = cs.onSurfaceVariant)
+                        "mine" -> Pill("Added by you", container = cs.surfaceVariant, content = cs.onSurfaceVariant)
                     }
                     if (following) Pill("Following", container = Gold, content = Color(0xFF2A2210))
                 }
@@ -196,6 +253,7 @@ private fun MosqueCard(m: NearbyMosque, following: Boolean, onFollow: () -> Unit
             OutlinedButton(onClick = onDirections, shape = RoundedCornerShape(50)) {
                 Icon(Icons.Outlined.Directions, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Directions")
             }
+            if (onRemove != null) IconButton(onClick = onRemove) { Icon(Icons.Outlined.DeleteOutline, "Remove", tint = cs.onSurfaceVariant) }
         }
     }
 }

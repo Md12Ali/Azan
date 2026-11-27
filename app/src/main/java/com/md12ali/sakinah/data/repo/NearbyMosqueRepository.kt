@@ -24,28 +24,43 @@ import java.time.LocalDate
  *  • the app's curated UK central mosques (East London, Birmingham, Luton…)
  * Results are merged, de-duplicated and sorted by distance.
  */
-class NearbyMosqueRepository(private val dao: TimetableDao) {
+class NearbyMosqueRepository(
+    private val dao: TimetableDao,
+    private val geo: com.md12ali.sakinah.location.GeoHelper
+) {
 
     private var cache: Triple<Double, Double, List<NearbyMosque>>? = null
 
-    suspend fun find(lat: Double, lon: Double, force: Boolean = false): List<NearbyMosque> {
+    suspend fun find(lat: Double, lon: Double, force: Boolean = false, saved: List<NearbyMosque> = emptyList()): List<NearbyMosque> {
         cache?.let { (cLat, cLon, list) ->
             if (!force && Places.distanceKm(lat, lon, cLat, cLon) < 0.5 && list.isNotEmpty()) return list
         }
         val result = coroutineScope {
             val mawaqit = async { searchMawaqit(lat, lon) }
             val osm = async {
-                // Start close; widen the circle in rural areas with few mosques.
-                var r = searchOsm(lat, lon, 5_000)
-                if (r.size < 3) r = searchOsm(lat, lon, 25_000)
-                if (r.isEmpty()) r = searchOsm(lat, lon, 80_000)
+                // Start very close; widen the circle only if few mosques are mapped nearby.
+                var r = searchOsm(lat, lon, 3_000)
+                if (r.size < 5) r = searchOsm(lat, lon, 10_000)
+                if (r.size < 3) r = searchOsm(lat, lon, 40_000)
                 r
             }
+            val google = async {
+                runCatching { geo.searchMosquePois(lat, lon) }.getOrDefault(emptyList()).map { (name, ll, addr) ->
+                    NearbyMosque(
+                        id = "google_${"%.5f".format(ll.first)}_${"%.5f".format(ll.second)}", name = name,
+                        latitude = ll.first, longitude = ll.second, address = addr,
+                        distanceKm = Places.distanceKm(lat, lon, ll.first, ll.second), source = "google"
+                    )
+                }
+            }
+            val mine = saved.map { it.copy(distanceKm = Places.distanceKm(lat, lon, it.latitude, it.longitude)) }
             val central = Places.mosques
                 .map { NearbyMosque("central_${it.id}", it.name, it.latitude, it.longitude, it.address, it.website, null,
                     distanceKm = Places.distanceKm(lat, lon, it.latitude, it.longitude), source = "uk-central") }
                 .filter { it.distanceKm <= 30 }
-            NearbyMosqueParsers.merge(mawaqit.await().filter { it.distanceKm <= 80 }, osm.await(), central).take(60)
+            // Priority when the same building appears twice: yours → UK central → Mawaqit (timetable) → Google → OSM.
+            val first = NearbyMosqueParsers.merge(mawaqit.await().filter { it.distanceKm <= 80 }, google.await(), mine + central)
+            NearbyMosqueParsers.merge(emptyList(), osm.await(), first).take(80)
         }
         if (result.isNotEmpty()) cache = Triple(lat, lon, result)
         return result
@@ -62,6 +77,21 @@ class NearbyMosqueRepository(private val dao: TimetableDao) {
             return NearbyMosqueParsers.parseOverpass(json, lat, lon)
         }
         return emptyList()
+    }
+
+    /**
+     * A mosque shared from Google Maps (Share → Copy link, or Share → Azan).
+     * Follows maps.app.goo.gl short links, reads the exact pin and name.
+     */
+    suspend fun fromGoogleMapsText(text: String): NearbyMosque? {
+        val url = com.md12ali.sakinah.core.location.GoogleMapsLink.firstUrl(text) ?: return null
+        val chain = if (com.md12ali.sakinah.core.location.GoogleMapsLink.isGoogleMaps(url)) Http.redirectChain(url) else listOf(url)
+        val place = chain.reversed().firstNotNullOfOrNull { com.md12ali.sakinah.core.location.GoogleMapsLink.parse(it) } ?: return null
+        val name = place.name ?: com.md12ali.sakinah.core.location.GoogleMapsLink.nameFromSharedText(text) ?: "My mosque"
+        return NearbyMosque(
+            id = "mine_${"%.5f".format(place.latitude)}_${"%.5f".format(place.longitude)}",
+            name = name, latitude = place.latitude, longitude = place.longitude, source = "mine"
+        )
     }
 
     /** Turns a found mosque into a profile the prayer-time engine can follow. */

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,9 +40,25 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleShare(intent)
         setContent { SakinahTheme { AppRoot() } }
     }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleShare(intent)
+    }
+
+    /** Text shared from Google Maps (place name + link). */
+    private fun handleShare(intent: android.content.Intent?) {
+        if (intent?.action == android.content.Intent.ACTION_SEND) {
+            intent.getStringExtra(android.content.Intent.EXTRA_TEXT)?.let { SharedText.value.value = it }
+        }
+    }
 }
+
+/** Hands text shared into the app (from Google Maps) to the UI. */
+object SharedText { val value = kotlinx.coroutines.flow.MutableStateFlow<String?>(null) }
 
 private val tabs = listOf(
     NavTab("prayer", "Prayer", Icons.Outlined.AccessTime),
@@ -57,6 +74,16 @@ private fun AppRoot() {
     val vm: PrayerViewModel = viewModel()   // one shared ViewModel for all screens
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
+
+    // Shared from Google Maps → add that mosque and open the Mosques tab.
+    val shared by SharedText.value.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(shared) {
+        shared?.let { text ->
+            SharedText.value.value = null
+            vm.addMosqueFromGoogleMaps(text)
+            nav.navigate("mosques") { launchSingleTop = true }
+        }
+    }
 
     fun go(r: String) = nav.navigate(r) {
         popUpTo(nav.graph.findStartDestination().id) { saveState = true }

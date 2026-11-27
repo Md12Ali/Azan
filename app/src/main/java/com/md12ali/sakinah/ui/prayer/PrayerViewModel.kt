@@ -60,7 +60,11 @@ class PrayerViewModel(app: Application) : AndroidViewModel(app) {
         val loading: Boolean = false,
         val mosques: List<NearbyMosque> = emptyList(),
         val error: String? = null,
-        val searched: Boolean = false
+        val searched: Boolean = false,
+        /** GPS accuracy of the search position in metres (null = not from a fresh GPS fix). */
+        val accuracyM: Int? = null,
+        val latitude: Double? = null,
+        val longitude: Double? = null
     )
 
     private val _nearby = MutableStateFlow(NearbyUi())
@@ -191,7 +195,7 @@ class PrayerViewModel(app: Application) : AndroidViewModel(app) {
     /** GPS → mosques around you (Mawaqit timetables + every mosque on OpenStreetMap), sorted by distance. */
     fun findNearby(force: Boolean = false) = viewModelScope.launch {
         _nearby.update { it.copy(loading = true, error = null) }
-        val loc = if (c.location.hasPermission()) c.location.currentLocation() else null
+        val loc = if (c.location.hasPermission()) c.location.preciseLocation() else null
         val lat = loc?.latitude ?: c.settings.current().lastLat ?: _state.value.place?.latitude
         val lon = loc?.longitude ?: c.settings.current().lastLon ?: _state.value.place?.longitude
         if (loc != null) c.settings.setLastFix(loc.latitude, loc.longitude)
@@ -199,9 +203,10 @@ class PrayerViewModel(app: Application) : AndroidViewModel(app) {
             _nearby.update { it.copy(loading = false, searched = true, error = "Turn on location so the app can find mosques near you.") }
             return@launch
         }
-        val list = runCatching { c.nearby.find(lat, lon, force) }.getOrDefault(emptyList())
+        val list = runCatching { c.nearby.find(lat, lon, force, myMosques()) }.getOrDefault(emptyList())
         _nearby.update {
-            it.copy(loading = false, searched = true, mosques = list,
+            it.copy(loading = false, searched = true, mosques = list, latitude = lat, longitude = lon,
+                accuracyM = loc?.takeIf { l -> l.hasAccuracy() }?.accuracy?.toInt(),
                 error = if (list.isEmpty()) "No mosques found nearby – check your internet connection and try again." else null)
         }
     }
@@ -219,6 +224,32 @@ class PrayerViewModel(app: Application) : AndroidViewModel(app) {
         reload()
     }
 
+    private suspend fun myMosques(): List<NearbyMosque> =
+        c.settings.current().myMosques.mapNotNull { NearbyMosque.decode(it) }
+
+    /**
+     * Add a mosque from Google Maps: the user shares the place (Share → Azan) or pastes its link.
+     * The exact pin and name are read from the link; the mosque is saved and followed for the Azan.
+     */
+    fun addMosqueFromGoogleMaps(text: String) = viewModelScope.launch {
+        _nearby.update { it.copy(loading = true, error = null) }
+        val m = runCatching { c.nearby.fromGoogleMapsText(text) }.getOrNull()
+        if (m == null) {
+            _nearby.update { it.copy(loading = false, error = "Couldn't read that link. In Google Maps open the mosque, tap Share → Copy link, then paste it here.") }
+            _state.update { it.copy(message = "Couldn't read that Google Maps link – please try Share → Copy link again.") }
+            return@launch
+        }
+        c.settings.addMyMosque(m.encode(), m.id)
+        followMosque(m).join()
+        _state.update { it.copy(message = "Added ${m.name} – the Azan now follows this mosque.") }
+        findNearby(force = true)
+    }
+
+    fun removeMyMosque(m: NearbyMosque) = viewModelScope.launch {
+        c.settings.removeMyMosque(m.id)
+        findNearby(force = true)
+    }
+
     fun setFollowNearest(v: Boolean) = viewModelScope.launch {
         c.settings.setFollowNearest(v)
         if (!v) c.settings.setAutoMosque(null)
@@ -232,7 +263,7 @@ class PrayerViewModel(app: Application) : AndroidViewModel(app) {
         if (com.md12ali.sakinah.core.location.Places.nearestCentralMosque(lat, lon) != null) return
         val current = NearbyMosque.decode(s.autoMosque)
         if (current != null && com.md12ali.sakinah.core.location.Places.distanceKm(lat, lon, current.latitude, current.longitude) < 3.0) return
-        val list = runCatching { c.nearby.find(lat, lon) }.getOrDefault(emptyList())
+        val list = runCatching { c.nearby.find(lat, lon, saved = myMosques()) }.getOrDefault(emptyList())
         _nearby.update { it.copy(mosques = list, searched = true) }
         val pick = list.firstOrNull { it.mawaqitSlug != null && it.distanceKm <= 10.0 }
         c.settings.setAutoMosque(pick?.encode())

@@ -64,6 +64,8 @@ data class AppSettings(
     val autoMosque: String? = null,
     /** Auto mode: follow the nearest mosque's own timetable when one is found nearby. */
     val followNearestMosque: Boolean = true,
+    /** Mosques the user added from Google Maps (encoded NearbyMosque, one per line). */
+    val myMosques: List<String> = emptyList(),
     /** mosqueId → "masjidbox:slug" | "mawaqit:slug" | "csv:https://…" – set by the user or remembered after discovery. */
     val mosqueSources: Map<String, String> = emptyMap(),
     val onboardingDone: Boolean = false
@@ -72,7 +74,7 @@ data class AppSettings(
     val activeCountry: String?
         get() = when (mode) {
             LocationMode.CITY_CALC -> cityCountryCode
-            LocationMode.MOSQUE -> if (mosqueId?.startsWith("osm_") == true || mosqueId?.startsWith("mawaqit_") == true) gpsCountryCode else "GB"
+            LocationMode.MOSQUE -> if (com.md12ali.sakinah.core.location.NearbyMosque.isFound(mosqueId)) gpsCountryCode else "GB"
             LocationMode.AUTO_GPS -> gpsCountryCode
         }
 
@@ -111,6 +113,7 @@ class SettingsRepository(private val context: Context) {
         val savedMosque = stringPreferencesKey("saved_mosque")
         val autoMosque = stringPreferencesKey("auto_mosque")
         val followNearest = booleanPreferencesKey("follow_nearest")
+        val myMosques = stringPreferencesKey("my_mosques")
         val sources = stringPreferencesKey("mosque_sources")   // "id=src\nid=src"
         val onboarding = booleanPreferencesKey("onboarding_done")
         val autoMethod = booleanPreferencesKey("auto_method")
@@ -148,6 +151,7 @@ class SettingsRepository(private val context: Context) {
             fullScreenAdhan = this[K.fullScreen] ?: false,
             savedMosque = this[K.savedMosque], autoMosque = this[K.autoMosque],
             followNearestMosque = this[K.followNearest] ?: true,
+            myMosques = this[K.myMosques].orEmpty().split("\u001E").filter { it.isNotBlank() },
             mosqueSources = this[K.sources].orEmpty().lines().filter { '=' in it }
                 .associate { it.substringBefore('=') to it.substringAfter('=') },
             onboardingDone = this[K.onboarding] ?: false
@@ -186,6 +190,13 @@ class SettingsRepository(private val context: Context) {
         if (encoded == null) it.remove(K.autoMosque) else it[K.autoMosque] = encoded
     }
     suspend fun setFollowNearest(v: Boolean) = context.dataStore.edit { it[K.followNearest] = v }
+    suspend fun addMyMosque(encoded: String, id: String) = context.dataStore.edit { p ->
+        val list = p[K.myMosques].orEmpty().split("\u001E").filter { it.isNotBlank() && !it.startsWith(id + "\u001F") }
+        p[K.myMosques] = (listOf(encoded) + list).take(20).joinToString("\u001E")
+    }
+    suspend fun removeMyMosque(id: String) = context.dataStore.edit { p ->
+        p[K.myMosques] = p[K.myMosques].orEmpty().split("\u001E").filter { it.isNotBlank() && !it.startsWith(id + "\u001F") }.joinToString("\u001E")
+    }
     suspend fun setOnboardingDone() = context.dataStore.edit { it[K.onboarding] = true }
 
     suspend fun setMosqueSource(mosqueId: String, source: String?) = context.dataStore.edit { prefs ->

@@ -52,6 +52,34 @@ class GeoHelper(private val context: Context) {
         }
     }
 
+    /**
+     * Google's own place data on most phones: Android's Geocoder (backed by Google on phones with Play services)
+     * searched for mosques inside a box around you. Free, no API key. Returns (name, lat, lon, address).
+     */
+    suspend fun searchMosquePois(lat: Double, lon: Double, boxKm: Double = 6.0): List<Triple<String, Pair<Double, Double>, String?>> =
+        withContext(Dispatchers.IO) {
+            if (!Geocoder.isPresent()) return@withContext emptyList()
+            val dLat = boxKm / 111.0
+            val dLon = boxKm / (111.0 * kotlin.math.cos(Math.toRadians(lat)).coerceAtLeast(0.2))
+            val terms = listOf("mosque", "masjid", "jamia masjid", "islamic centre", "islamic center", "musalla", "مسجد")
+            val out = mutableListOf<Triple<String, Pair<Double, Double>, String?>>()
+            for (term in terms) {
+                val res = withTimeoutOrNull(6_000) {
+                    runCatching {
+                        @Suppress("DEPRECATION")
+                        geocoder().getFromLocationName(term, 20, lat - dLat, lon - dLon, lat + dLat, lon + dLon)
+                    }.getOrNull()
+                }.orEmpty()
+                res.filter { it.hasLatitude() && it.hasLongitude() }.forEach { a ->
+                    val name = a.featureName?.takeIf { n -> n.isNotBlank() && !n.first().isDigit() } ?: return@forEach
+                    // Keep real places of worship; skip streets/areas that merely contain the word.
+                    val looksLikeMosque = Regex("(?i)masjid|mosque|islamic|musall|jami|مسجد|camii|mosquée|moschee|mezquita").containsMatchIn(name)
+                    if (looksLikeMosque) out += Triple(name, a.latitude to a.longitude, a.getAddressLine(0))
+                }
+            }
+            out.distinctBy { "${it.first.lowercase()}|${"%.3f".format(it.second.first)}|${"%.3f".format(it.second.second)}" }
+        }
+
     private fun Address.toCity(): City? {
         if (!hasLatitude() || !hasLongitude()) return null
         val name = locality ?: subAdminArea ?: featureName ?: adminArea ?: return null

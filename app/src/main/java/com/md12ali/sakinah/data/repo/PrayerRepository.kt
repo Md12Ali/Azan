@@ -102,7 +102,7 @@ class PrayerRepository(
             dao.day(mosque.id, date.toString())?.let { return it.toPrayerDay(date, mosque) to place }
             val calc = PrayerCalculator.calculate(
                 date, mosque.latitude, mosque.longitude, zone,
-                CalcParams(if (mosque.id.startsWith("osm_") || mosque.id.startsWith("mawaqit_")) s.effectiveMethod else mosque.method,
+                CalcParams(if (com.md12ali.sakinah.core.location.NearbyMosque.isFound(mosque.id)) s.effectiveMethod else mosque.method,
                     s.effectiveMadhab, mosque.fallbackOffsets)
             )
             return calc.copy(sourceDetail = if (mosque.sources.isEmpty()) "${mosque.name} doesn't publish a timetable online · calculated (${s.effectiveMethod.label})"

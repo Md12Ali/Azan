@@ -23,6 +23,37 @@ class LocationHelper(private val context: Context) {
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
+    /**
+     * Precise, FRESH fix for "nearest mosque": tries real GPS first (up to [timeoutMs]), then network.
+     * Never trusts an old or rough cached position, so the nearest mosque really is the nearest.
+     */
+    @SuppressLint("MissingPermission")
+    suspend fun preciseLocation(timeoutMs: Long = 15_000): Location? {
+        if (!hasPermission()) return null
+        val lm = context.getSystemService(LocationManager::class.java) ?: return null
+        val enabled = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            .filter { runCatching { lm.isProviderEnabled(it) }.getOrDefault(false) }
+        // A very recent, accurate cached fix is fine (≤2 min, ≤60 m).
+        enabled.mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }
+            .filter { System.currentTimeMillis() - it.time < 120_000 && it.hasAccuracy() && it.accuracy <= 60f }
+            .minByOrNull { it.accuracy }?.let { return it }
+        var best: Location? = null
+        for (p in enabled) {
+            val fix = withTimeoutOrNull(timeoutMs) {
+                suspendCancellableCoroutine<Location?> { cont ->
+                    val signal = CancellationSignal()
+                    cont.invokeOnCancellation { signal.cancel() }
+                    LocationManagerCompat.getCurrentLocation(lm, p, signal, ContextCompat.getMainExecutor(context)) { loc ->
+                        if (cont.isActive) cont.resume(loc)
+                    }
+                }
+            }
+            if (fix != null && (best == null || (fix.hasAccuracy() && fix.accuracy < best.accuracy))) best = fix
+            if (best != null && best.hasAccuracy() && best.accuracy <= 50f) break
+        }
+        return best ?: currentLocation()
+    }
+
     @SuppressLint("MissingPermission")
     suspend fun currentLocation(timeoutMs: Long = 12_000): Location? {
         if (!hasPermission()) return null

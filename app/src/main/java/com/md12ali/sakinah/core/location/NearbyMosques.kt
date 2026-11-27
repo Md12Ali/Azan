@@ -26,6 +26,10 @@ data class NearbyMosque(
         .joinToString("\u001F") { it.toString().replace("\u001F", " ").replace("\n", " ") }
 
     companion object {
+        /** Ids of mosques found at runtime (not the app's curated UK central list). */
+        fun isFound(id: String?): Boolean =
+            id != null && listOf("osm_", "mawaqit_", "google_", "mine_").any { id.startsWith(it) }
+
         fun decode(s: String?): NearbyMosque? {
             val p = s?.split("\u001F") ?: return null
             if (p.size < 8) return null
