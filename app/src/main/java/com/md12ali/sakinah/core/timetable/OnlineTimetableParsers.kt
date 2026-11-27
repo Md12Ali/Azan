@@ -290,3 +290,12 @@ internal class MiniJson(private val s: String, private var i: Int) {
 
     private fun skipWs() { while (i < s.length && s[i].isWhitespace()) i++ }
 }
+
+/** Public entry point to the tiny JSON reader for other core packages. */
+object MiniJsonAccess {
+    fun parse(json: String): Any? {
+        val start = json.indexOfFirst { it == '{' || it == '[' }
+        if (start < 0) return null
+        return runCatching { MiniJson(json, start).parseValue() }.getOrNull()
+    }
+}

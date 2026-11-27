@@ -36,7 +36,8 @@ data class ActivePlace(
 class PrayerRepository(
     private val settingsRepo: SettingsRepository,
     private val dao: TimetableDao,
-    private val fetcher: TimetableFetcher
+    private val fetcher: TimetableFetcher,
+    private val nearby: NearbyMosqueRepository
 ) {
     private val zone: ZoneId get() = ZoneId.systemDefault()
 
@@ -46,8 +47,9 @@ class PrayerRepository(
         val london = Places.mosqueById("east-london-mosque")!!
         return when (s.mode) {
             LocationMode.MOSQUE -> {
-                val m = Places.mosqueById(s.mosqueId) ?: Places.mosques.first()
-                ActivePlace(m.name, "Chosen mosque · ${m.city}", m, m.latitude, m.longitude)
+                val found = com.md12ali.sakinah.core.location.NearbyMosque.decode(s.savedMosque)?.takeIf { it.id == s.mosqueId }
+                val m = Places.mosqueById(s.mosqueId) ?: found?.let { nearby.toProfile(it, s.gpsCountryCode) } ?: Places.mosques.first()
+                ActivePlace(m.name, if (found != null) "Your chosen mosque" else "Chosen mosque · ${m.city}", m, m.latitude, m.longitude)
             }
             LocationMode.CITY_CALC -> ActivePlace(
                 s.cityName ?: "London", "Calculated · ${s.effectiveMethod.label}", null,
@@ -59,7 +61,13 @@ class PrayerRepository(
                     ActivePlace("Waiting for GPS…", "Using London until your location is found", london, london.latitude, london.longitude)
                 } else {
                     val m = Places.nearestCentralMosque(lat, lon)
-                    if (m != null) {
+                    val auto = com.md12ali.sakinah.core.location.NearbyMosque.decode(s.autoMosque)
+                        ?.takeIf { s.followNearestMosque && Places.distanceKm(lat, lon, it.latitude, it.longitude) <= 10.0 }
+                    if (m == null && auto != null) {
+                        val km = Places.distanceKm(lat, lon, auto.latitude, auto.longitude)
+                        ActivePlace(auto.name, "Nearest mosque with a timetable · %.1f km".format(km),
+                            nearby.toProfile(auto, s.gpsCountryCode), lat, lon)
+                    } else if (m != null) {
                         val km = Places.distanceKm(lat, lon, m.latitude, m.longitude)
                         ActivePlace(m.name, "Nearest central mosque · %.1f km".format(km), m, lat, lon)
                     } else {
@@ -94,9 +102,11 @@ class PrayerRepository(
             dao.day(mosque.id, date.toString())?.let { return it.toPrayerDay(date, mosque) to place }
             val calc = PrayerCalculator.calculate(
                 date, mosque.latitude, mosque.longitude, zone,
-                CalcParams(mosque.method, s.effectiveMadhab, mosque.fallbackOffsets)
+                CalcParams(if (mosque.id.startsWith("osm_") || mosque.id.startsWith("mawaqit_")) s.effectiveMethod else mosque.method,
+                    s.effectiveMadhab, mosque.fallbackOffsets)
             )
-            return calc.copy(sourceDetail = "Timetable not downloaded yet · calculated for ${mosque.city}") to place
+            return calc.copy(sourceDetail = if (mosque.sources.isEmpty()) "${mosque.name} doesn't publish a timetable online · calculated (${s.effectiveMethod.label})"
+                else "Timetable not downloaded yet · calculated for ${mosque.name}") to place
         }
         val calc = PrayerCalculator.calculate(date, place.latitude, place.longitude, zone,
             CalcParams(s.effectiveMethod, s.effectiveMadhab, Offsets()))

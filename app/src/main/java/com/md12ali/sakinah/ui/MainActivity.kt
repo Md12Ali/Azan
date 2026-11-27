@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccessTime
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Mosque
+import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -45,8 +46,9 @@ class MainActivity : ComponentActivity() {
 private val tabs = listOf(
     NavTab("prayer", "Prayer", Icons.Outlined.AccessTime),
     NavTab("qibla", "Qibla", Icons.Outlined.Explore),
-    NavTab("location", "Location", Icons.Outlined.Mosque),
-    NavTab("settings", "Adhan", Icons.Outlined.Tune)
+    NavTab("mosques", "Mosques", Icons.Outlined.Mosque),
+    NavTab("location", "Location", Icons.Outlined.Place),
+    NavTab("settings", "Azan", Icons.Outlined.Tune)
 )
 
 @Composable
@@ -78,6 +80,7 @@ private fun AppRoot() {
         ) {
             composable("prayer") { PrayerDashboardScreen(vm, onOpenLocation = { go("location") }, onOpenAdhanSettings = { go("settings") }) }
             composable("qibla") { QiblaScreen(vm) }
+            composable("mosques") { com.md12ali.sakinah.ui.prayer.MosquesScreen(vm) }
             composable("location") { LocationScreen(vm, onDone = { go("prayer") }) }
             composable("settings") { AdhanSettingsScreen(vm) }
         }

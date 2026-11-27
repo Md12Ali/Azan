@@ -7,6 +7,7 @@ import com.md12ali.sakinah.SakinahApp
 import com.md12ali.sakinah.alarm.AdhanScheduler
 import com.md12ali.sakinah.core.location.City
 import com.md12ali.sakinah.core.location.MosqueProfile
+import com.md12ali.sakinah.core.location.NearbyMosque
 import com.md12ali.sakinah.core.prayer.CalculationMethod
 import com.md12ali.sakinah.core.prayer.Madhab
 import com.md12ali.sakinah.core.prayer.Prayer
@@ -55,6 +56,16 @@ class PrayerViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(PrayerUiState())
     val state: StateFlow<PrayerUiState> = _state.asStateFlow()
 
+    data class NearbyUi(
+        val loading: Boolean = false,
+        val mosques: List<NearbyMosque> = emptyList(),
+        val error: String? = null,
+        val searched: Boolean = false
+    )
+
+    private val _nearby = MutableStateFlow(NearbyUi())
+    val nearby: StateFlow<NearbyUi> = _nearby.asStateFlow()
+
     init {
         viewModelScope.launch { c.settings.settings.collect { s -> _state.update { it.copy(settings = s) } } }
         viewModelScope.launch {
@@ -98,6 +109,7 @@ class PrayerViewModel(app: Application) : AndroidViewModel(app) {
                 runCatching { c.geo.reverse(loc.latitude, loc.longitude) }.getOrNull()?.let { info ->
                     c.settings.setGpsPlace(info.countryCode, info.locality)
                 }
+                autoPickNearestMosque(loc.latitude, loc.longitude)
             }
             reload().join()
         }
@@ -172,6 +184,70 @@ class PrayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun consumeMessage() = _state.update { it.copy(message = null) }
+
+    // ------------------------------------------------------------------ nearby mosques (worldwide)
+
+
+    /** GPS → mosques around you (Mawaqit timetables + every mosque on OpenStreetMap), sorted by distance. */
+    fun findNearby(force: Boolean = false) = viewModelScope.launch {
+        _nearby.update { it.copy(loading = true, error = null) }
+        val loc = if (c.location.hasPermission()) c.location.currentLocation() else null
+        val lat = loc?.latitude ?: c.settings.current().lastLat ?: _state.value.place?.latitude
+        val lon = loc?.longitude ?: c.settings.current().lastLon ?: _state.value.place?.longitude
+        if (loc != null) c.settings.setLastFix(loc.latitude, loc.longitude)
+        if (lat == null || lon == null) {
+            _nearby.update { it.copy(loading = false, searched = true, error = "Turn on location so the app can find mosques near you.") }
+            return@launch
+        }
+        val list = runCatching { c.nearby.find(lat, lon, force) }.getOrDefault(emptyList())
+        _nearby.update {
+            it.copy(loading = false, searched = true, mosques = list,
+                error = if (list.isEmpty()) "No mosques found nearby – check your internet connection and try again." else null)
+        }
+    }
+
+    /** Follow a found mosque: its own timetable if it publishes one, otherwise calculated for its location. */
+    fun followMosque(m: NearbyMosque) = viewModelScope.launch {
+        val centralId = m.id.removePrefix("central_")
+        if (m.id.startsWith("central_") && com.md12ali.sakinah.core.location.Places.mosqueById(centralId) != null) {
+            c.settings.setMosque(centralId)
+        } else {
+            c.settings.followFoundMosque(m.id, m.encode())
+        }
+        refresh(forceDownload = true).join()
+        ensureTodayFrom(m)
+        reload()
+    }
+
+    fun setFollowNearest(v: Boolean) = viewModelScope.launch {
+        c.settings.setFollowNearest(v)
+        if (!v) c.settings.setAutoMosque(null)
+        refresh(fetchGps = true)
+    }
+
+    /** Auto mode: outside the curated UK central mosques, follow the nearest mosque that publishes a timetable. */
+    private suspend fun autoPickNearestMosque(lat: Double, lon: Double) {
+        val s = c.settings.current()
+        if (!s.followNearestMosque) return
+        if (com.md12ali.sakinah.core.location.Places.nearestCentralMosque(lat, lon) != null) return
+        val current = NearbyMosque.decode(s.autoMosque)
+        if (current != null && com.md12ali.sakinah.core.location.Places.distanceKm(lat, lon, current.latitude, current.longitude) < 3.0) return
+        val list = runCatching { c.nearby.find(lat, lon) }.getOrDefault(emptyList())
+        _nearby.update { it.copy(mosques = list, searched = true) }
+        val pick = list.firstOrNull { it.mawaqitSlug != null && it.distanceKm <= 10.0 }
+        c.settings.setAutoMosque(pick?.encode())
+        if (pick != null) {
+            runCatching { c.prayerRepository.refreshTimetableIfNeeded(force = true) }
+            ensureTodayFrom(pick)
+        }
+    }
+
+    private suspend fun ensureTodayFrom(m: NearbyMosque) {
+        val (day, _) = c.prayerRepository.day(LocalDate.now())
+        if (day.source != com.md12ali.sakinah.core.prayer.TimeSource.MOSQUE_TIMETABLE && m.todayTimes.isNotEmpty()) {
+            c.nearby.saveTodayFromSearch(m)
+        }
+    }
 
     private fun hijriLabel(date: LocalDate): String = runCatching {
         // Umm al-Qura calendar – UK moonsighting can differ by a day; shown as a guide only.

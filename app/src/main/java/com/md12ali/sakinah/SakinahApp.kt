@@ -17,7 +17,8 @@ class AppContainer(context: Context) {
     val location = LocationHelper(context)
     val geo = com.md12ali.sakinah.location.GeoHelper(context)
     val fetcher = TimetableFetcher(context, db.timetable())
-    val prayerRepository = PrayerRepository(settings, db.timetable(), fetcher)
+    val nearby = com.md12ali.sakinah.data.repo.NearbyMosqueRepository(db.timetable())
+    val prayerRepository = PrayerRepository(settings, db.timetable(), fetcher, nearby)
 }
 
 class SakinahApp : Application() {

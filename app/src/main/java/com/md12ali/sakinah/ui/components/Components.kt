@@ -198,7 +198,7 @@ data class NavTab(val route: String, val label: String, val icon: ImageVector)
 /** Floating pill navigation bar. */
 @Composable
 fun FloatingNavBar(tabs: List<NavTab>, selected: String?, onSelect: (String) -> Unit, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 24.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
+    Box(modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
         Surface(
             shape = RoundedCornerShape(32.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -212,7 +212,7 @@ fun FloatingNavBar(tabs: List<NavTab>, selected: String?, onSelect: (String) -> 
                         Modifier.clip(RoundedCornerShape(26.dp))
                             .background(if (isSel) MaterialTheme.colorScheme.primary else Color.Transparent)
                             .clickable { onSelect(t.route) }
-                            .padding(horizontal = if (isSel) 18.dp else 16.dp, vertical = 12.dp),
+                            .padding(horizontal = if (isSel) 16.dp else 12.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {

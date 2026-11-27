@@ -58,6 +58,12 @@ data class AppSettings(
     val alertAtJamaat: Boolean = false,
     /** false (default) = notification + Azan sound only. true = full-screen Azan screen like an alarm clock. */
     val fullScreenAdhan: Boolean = false,
+    /** A mosque found near you (anywhere in the world) that you chose to follow. Encoded NearbyMosque. */
+    val savedMosque: String? = null,
+    /** Auto mode: the nearest mosque with its own timetable, picked automatically. Encoded NearbyMosque. */
+    val autoMosque: String? = null,
+    /** Auto mode: follow the nearest mosque's own timetable when one is found nearby. */
+    val followNearestMosque: Boolean = true,
     /** mosqueId → "masjidbox:slug" | "mawaqit:slug" | "csv:https://…" – set by the user or remembered after discovery. */
     val mosqueSources: Map<String, String> = emptyMap(),
     val onboardingDone: Boolean = false
@@ -66,7 +72,7 @@ data class AppSettings(
     val activeCountry: String?
         get() = when (mode) {
             LocationMode.CITY_CALC -> cityCountryCode
-            LocationMode.MOSQUE -> "GB"
+            LocationMode.MOSQUE -> if (mosqueId?.startsWith("osm_") == true || mosqueId?.startsWith("mawaqit_") == true) gpsCountryCode else "GB"
             LocationMode.AUTO_GPS -> gpsCountryCode
         }
 
@@ -102,6 +108,9 @@ class SettingsRepository(private val context: Context) {
         val alarmVol = booleanPreferencesKey("alarm_volume")
         val atJamaat = booleanPreferencesKey("at_jamaat")
         val fullScreen = booleanPreferencesKey("full_screen_adhan")
+        val savedMosque = stringPreferencesKey("saved_mosque")
+        val autoMosque = stringPreferencesKey("auto_mosque")
+        val followNearest = booleanPreferencesKey("follow_nearest")
         val sources = stringPreferencesKey("mosque_sources")   // "id=src\nid=src"
         val onboarding = booleanPreferencesKey("onboarding_done")
         val autoMethod = booleanPreferencesKey("auto_method")
@@ -137,6 +146,8 @@ class SettingsRepository(private val context: Context) {
             useAlarmVolume = this[K.alarmVol] ?: d.useAlarmVolume,
             alertAtJamaat = this[K.atJamaat] ?: false,
             fullScreenAdhan = this[K.fullScreen] ?: false,
+            savedMosque = this[K.savedMosque], autoMosque = this[K.autoMosque],
+            followNearestMosque = this[K.followNearest] ?: true,
             mosqueSources = this[K.sources].orEmpty().lines().filter { '=' in it }
                 .associate { it.substringBefore('=') to it.substringAfter('=') },
             onboardingDone = this[K.onboarding] ?: false
@@ -168,6 +179,13 @@ class SettingsRepository(private val context: Context) {
     suspend fun setUseAlarmVolume(v: Boolean) = context.dataStore.edit { it[K.alarmVol] = v }
     suspend fun setAlertAtJamaat(v: Boolean) = context.dataStore.edit { it[K.atJamaat] = v }
     suspend fun setFullScreenAdhan(v: Boolean) = context.dataStore.edit { it[K.fullScreen] = v }
+    suspend fun followFoundMosque(id: String, encoded: String) = context.dataStore.edit {
+        it[K.savedMosque] = encoded; it[K.mosqueId] = id; it[K.mode] = LocationMode.MOSQUE.name
+    }
+    suspend fun setAutoMosque(encoded: String?) = context.dataStore.edit {
+        if (encoded == null) it.remove(K.autoMosque) else it[K.autoMosque] = encoded
+    }
+    suspend fun setFollowNearest(v: Boolean) = context.dataStore.edit { it[K.followNearest] = v }
     suspend fun setOnboardingDone() = context.dataStore.edit { it[K.onboarding] = true }
 
     suspend fun setMosqueSource(mosqueId: String, source: String?) = context.dataStore.edit { prefs ->

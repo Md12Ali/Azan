@@ -20,6 +20,7 @@ GPS fix ──► nearest central mosque (within 25 km) ──► that mosque's 
 * **Auto (GPS)**, the default: it follows the nearest city's central mosque, for example **East London Mosque** in London, **Birmingham Central Mosque**, Luton Central Mosque, and the central mosques of Leicester and Manchester. It switches automatically when you travel.
 * **Chosen mosque**: keep your home mosque's times while you're away.
 * **City**: plain calculation (Moonsighting Committee + Hanafi Asr by default, both changeable).
+* **Mosques near you, anywhere in the world** (Mosques tab): GPS finds every mosque around you using OpenStreetMap, plus the mosques that publish their own timetable on Mawaqit (85+ countries). Each one shows its distance, whether it has its own timetable, today's times and directions. Tap **Use for Azan** to follow it. In automatic mode the app follows the nearest mosque with a published timetable within 10 km; anywhere else it calculates the times with your country's method.
 * **Qibla compass**: works anywhere in the world, offline. It shows the direction and distance to the Kaaba, corrects magnetic north to true north, and vibrates and turns gold when you face the Qibla.
 * **Per-prayer alert**: Full Adhan / Soft Adhan (default for Fajr) / Gentle notification / Silent. Tap the bell icons on the dashboard.
 * **Adhan at jamaat time** (optional) when the mosque publishes jamaat times.
